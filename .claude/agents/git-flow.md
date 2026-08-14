@@ -64,6 +64,10 @@ Descripción en minúscula, imperativo, sin punto final. Scope entre paréntesis
 
 Los pasos 4, 5 y 6 son obligatorios en todo PR, no opcionales — no se salta ninguno aunque el cambio parezca pequeño.
 
+## Después de mergear a `develop`
+
+Si el PR introdujo una feature significativa (esquema nuevo, endpoint nuevo, flujo de UI nuevo — no un typo fix ni un ajuste menor), invocar al agente `docs` para que actualice `README.md`/`docs/ARCHITECTURE.md`/`docs/api/` según corresponda. No bloquea el merge (ya se hizo), pero es un paso obligatorio de seguimiento inmediatamente después — no queda pendiente "para después" indefinidamente.
+
 ## Proceso de release
 
 1. `git checkout develop && git pull origin develop`

@@ -14,7 +14,7 @@ Nombres de tabla, columna, tipo y enum que representen un concepto del negocio v
 
 - Toda tabla de dominio (barberías, clientes, reservas, membresías, barberos) lleva `tenant_id` no nulo con FK a la tabla de barberías.
 - RLS habilitado por defecto en toda tabla nueva — nunca dejar una tabla sin política antes de exponerla.
-- Política estándar: `tenant_id = current_setting('app.current_tenant')::uuid` (o el mecanismo de sesión que use el proyecto) — ningún query cross-tenant sin un rol explícito de "operador de plataforma".
+- Política estándar: funciones helper de RLS parametrizadas por el `tenant_id` de la fila que evalúa cada policy (`es_administrador_plataforma()`, `es_miembro_del_tenant(tenant_id)`, `es_personal_del_tenant(tenant_id)`, `es_dueno_del_tenant(tenant_id)`, `es_cliente_del_tenant(tenant_id)`, definidas en `supabase/migrations/001_extensiones_y_helpers.sql`) — resuelven contra `roles_usuario` (auth.uid() + tenant_id + rol), nunca contra un "tenant actual" implícito. **Nunca uses `current_setting('app.current_tenant')` ni ninguna función tipo `current_tenant_id()`/`current_user_role()` que resuelva el tenant/rol "actual" con `LIMIT 1` sin parametrizar por fila** — ese patrón se probó no determinístico en auditoría real (un usuario puede tener roles en más de un tenant) y fue eliminado del esquema. Ningún query cross-tenant sin pasar por `es_administrador_plataforma()`.
 
 ## Al diseñar una entidad nueva
 
