@@ -121,7 +121,7 @@ suya, y un intento de mover `tenant_id` de su propio perfil a un tenant sin regi
 
 `009`/`010` se corrieron desde cero contra Postgres real (Docker, con un esquema `auth`
 mínimo simulando `auth.users` + `auth.uid()`/`auth.role()`/`auth.jwt()` leyendo
-`request.jwt.claims`, igual que hace PostgREST) y con 17 escenarios funcionales simulando
+`request.jwt.claims`, igual que hace PostgREST) y con 18 escenarios funcionales simulando
 requests reales (`SET ROLE authenticated` + `SET request.jwt.claims`), no solo que las
 migraciones corrieran limpio. Ese proceso encontró y corrigió un hallazgo real antes de
 mergear (no fue detectado por inspección, solo probando contra la base):
@@ -153,7 +153,7 @@ mergear (no fue detectado por inspección, solo probando contra la base):
   llegar a la fila, no este trigger). Confirmado con un escenario adicional (`dueno_sede`
   intentando tocar `eliminado_at` de su propio perfil, rechazado).
 
-Los 17 escenarios que quedaron verdes tras la corrección: autoasignación de `cliente` en
+Los 18 escenarios que quedaron verdes tras la corrección: autoasignación de `cliente` en
 primera reserva + creación de `clientes` en la misma transacción; bloqueo de autoasignarse
 `dueno_sede`; bloqueo de asignar `cliente` a otro usuario sin ser staff de esa sede;
 `dueno_sede` contrata `barbero` en su propia sede; bloqueo de contratar en una sede ajena;
@@ -187,7 +187,7 @@ borde, 2 duplicidades y 3 anglicismos — los 6 corregidos en la misma rama.
    `telefono_verificado`/`metadata_app` del perfil GLOBAL de alguien con actividad en otras
    19 sedes (negocios independientes entre sí, no sub-sedes del mismo tenant) — un escenario
    orgánico (dueño de 2 sedes, o un usuario cliente en una y barbero en otra), no un ataque
-   forzado. No estaba cubierto por los 17 escenarios anteriores: probaban que no se podía
+   forzado. No estaba cubierto por los 18 escenarios anteriores: probaban que no se podía
    insertar un rol en un tenant ajeno, pero no qué pasaba DESPUÉS de un insert legítimo
    sobre un usuario con roles en otro tenant.
 
@@ -242,7 +242,7 @@ borde, 2 duplicidades y 3 anglicismos — los 6 corregidos en la misma rama.
    anglicismo de dominio.
 
 Validado: las 10 migraciones se corrieron de nuevo desde cero contra Postgres real tras
-estas correcciones, con los 17 escenarios anteriores (todos siguen en verde) más un
+estas correcciones, con los 18 escenarios anteriores (todos siguen en verde) más un
 escenario nuevo específico para el hallazgo bloqueante: un usuario (Carlos) con rol real en
 2 tenants (`barbero` en A, `cliente` en B) — su `dueno_sede` de A puede verlo y tocar
 `bloqueado_hasta` (columna permitida), pero NO `eliminado_at`/`metadata_app`/
@@ -323,7 +323,7 @@ funcional. Los 3 corregidos en la misma rama, antes de una tercera pasada de gua
    excepción explícita.
 
 Validado: las 10 migraciones se corrieron de nuevo desde cero contra Postgres real tras estas
-3 correcciones. Los 29 escenarios anteriores (17 + 12) siguen en verde, más 7 escenarios
+3 correcciones. Los 30 escenarios anteriores (18 + 12) siguen en verde, más 7 escenarios
 nuevos específicos: la cadena de ataque completa con una víctima realista (Beatriz,
 `dueno_sede` de la sede B, atada como `cliente` trivial de la sede A por Ana) — se crea la
 relación trivial (`roles_usuario_insert` sigue permitiéndolo, es el residual aceptado), Ana
