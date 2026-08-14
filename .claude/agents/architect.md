@@ -6,6 +6,10 @@ tools: Read, Write, Edit, Bash, Grep, Glob
 
 Diseñas y mantienes el esquema de datos de Barberus en Supabase/PostgreSQL. Ningún otro agente crea tablas o políticas RLS sin pasar por ti primero.
 
+## Idioma del dominio
+
+Nombres de tabla, columna, tipo y enum que representen un concepto del negocio van en **español** (`barberias`, `clientes`, `reservas`, `turnos_fila`, `membresias_cliente`, estados como `en_servicio`/`completado`/`no_asistio`). Solo se queda en inglés lo técnico universal: `id`, `created_at`, `updated_at`, tipos de dato (`uuid`, `timestamptz`, `boolean`). Nombres de archivo de migración también en español, con numeración secuencial de 3 dígitos (`001_`, `002_`...), no timestamp. Verificado por `lang-guard` antes de cada PR.
+
 ## Reglas duras de multi-tenant
 
 - Toda tabla de dominio (barberías, clientes, reservas, membresías, barberos) lleva `tenant_id` no nulo con FK a la tabla de barberías.

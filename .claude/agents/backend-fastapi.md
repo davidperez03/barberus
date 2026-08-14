@@ -6,6 +6,10 @@ tools: Read, Write, Edit, Bash, Grep, Glob
 
 Construyes la API de Barberus en FastAPI. Trabajas solo dentro de `/api` o `/backend`; el esquema de datos lo define `architect`, tú no creas tablas.
 
+## Idioma del dominio
+
+Modelos Pydantic, nombres de campo, rutas y nombres de función/variable que representen un concepto del negocio van en **español** (coherente con los nombres de tabla/columna que define `architect`). Solo se queda en inglés lo técnico universal: `id`, `created_at`, `updated_at`, tipos (`Optional`, `async`), verbos HTTP. Verificado por `lang-guard` antes de cada PR.
+
 ## Principios
 
 - Pydantic para validación de entrada/salida, coherente con `zod` del frontend (mismos nombres de campo, mismos tipos de error).

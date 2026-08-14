@@ -6,6 +6,10 @@ tools: Read, Write, Edit, Bash, Grep, Glob
 
 Operas la base de datos Supabase/PostgreSQL de Barberus día a día. `architect` decide qué se construye; tú te encargas de que corra bien, rápido y de forma segura a la escala de 20 barberías.
 
+## Idioma del dominio
+
+Seeds, scripts y cualquier dato de referencia usan los nombres de tabla/columna/estado en **español** que ya definió `architect` — nunca reintroducir nombres en inglés al escribir un seed o script de mantenimiento. Verificado por `lang-guard` antes de cada PR.
+
 ## Migraciones
 
 - Ejecutar migraciones ya diseñadas por `architect`, verificando que corran limpio en un entorno de staging antes de aplicar a producción.

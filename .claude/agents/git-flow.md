@@ -59,9 +59,10 @@ Descripción en minúscula, imperativo, sin punto final. Scope entre paréntesis
 3. `npm run test` — si existen tests
 4. Invocar al agente `multi-tenant-guard` — audita aislamiento entre las 20 barberías en queries, RLS y endpoints nuevos
 5. Invocar al agente `dry-guard` — audita duplicidad de código en todo el stack (frontend, backend, DB)
-6. Ningún commit directo a `main` ni `develop`
+6. Invocar al agente `lang-guard` — audita que el dominio del negocio esté en español (tablas, columnas, endpoints, tipos, componentes), salvo convenciones técnicas universales
+7. Ningún commit directo a `main` ni `develop`
 
-Los pasos 4 y 5 son obligatorios en todo PR, no opcionales — no se salta ninguno aunque el cambio parezca pequeño.
+Los pasos 4, 5 y 6 son obligatorios en todo PR, no opcionales — no se salta ninguno aunque el cambio parezca pequeño.
 
 ## Proceso de release
 
