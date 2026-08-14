@@ -12,9 +12,11 @@ North star del producto: reducir los no-shows y el tiempo de espera en fila.
 todavía — nada de este repo es desplegable como aplicación en este momento. Lo que sí
 existe y está completo:
 
-- `supabase/migrations/`: 8 migraciones SQL (`001` a `008`) que definen 13 tablas de
-  dominio con Row Level Security multi-tenant. Ver el detalle en
-  [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+- `supabase/migrations/`: 10 migraciones SQL (`001` a `010`) que definen 20 tablas —
+  13 de dominio (barberías, barberos, servicios, clientes, reservas, fila, membresías) y
+  7 de identidad/auth extendida (perfil de usuario, identidades vinculadas, sesiones,
+  MFA-ready, tokens de un solo uso, auditoría) — con Row Level Security multi-tenant. Ver el
+  detalle en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 - `scripts/migrations/APPLIED.md`: registro de cada migración, su estado y las decisiones
   de diseño detrás de cada una.
 
@@ -40,7 +42,7 @@ El resto es el stack objetivo, todavía sin implementar:
 ```
 barberus/
 ├── supabase/
-│   └── migrations/          # esquema SQL, 001_..._008_..., orden = orden numérico
+│   └── migrations/          # esquema SQL, 001_..._010_..., orden = orden numérico
 ├── scripts/
 │   └── migrations/
 │       └── APPLIED.md       # registro y notas de diseño de cada migración
