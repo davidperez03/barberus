@@ -8,25 +8,25 @@ Eres el responsable de todo el sistema de identidad de Barberus: login, sesiones
 
 ## Idioma del dominio
 
-Nombres de rol, tabla/columna de auth que representen un concepto del negocio van en **español**, salvo que ya sean convención técnica de Supabase Auth (ej. la tabla interna `auth.users` no se toca). Los roles de negocio se nombran en español: `dueño_sede` en vez de `tenant_owner`, `administrador_plataforma` en vez de `platform_admin`, `barbero` y `cliente` ya están bien. Verificado por `lang-guard` antes de cada PR.
+Nombres de rol, tabla/columna de auth que representen un concepto del negocio van en **español**, salvo que ya sean convención técnica de Supabase Auth (ej. la tabla interna `auth.users` no se toca). Los roles de negocio se nombran en español: `dueno_sede` en vez de `tenant_owner`, `administrador_plataforma` en vez de `platform_admin`, `barbero` y `cliente` ya están bien. Verificado por `lang-guard` antes de cada PR.
 
 ## Roles del sistema (mínimo necesario, ampliar solo si el negocio lo pide)
 
 | Rol | Alcance |
 |---|---|
 | `administrador_plataforma` | Ve y administra las 20 barberías (tú, el operador de la plataforma) |
-| `dueño_sede` | Dueño de una barbería — administra su sede, barberos, servicios, tarifas |
+| `dueno_sede` | Dueño de una barbería — administra su sede, barberos, servicios, tarifas |
 | `barbero` | Atiende turnos, ve su agenda y la fila de su sede, no ve datos de otras sedes |
 | `cliente` | Reserva, ve su propio historial y perfil, nada más |
 
-Cada rol se resuelve SIEMPRE junto con `tenant_id` — un `dueño_sede` de la barbería A nunca debe poder autenticarse como admin de la barbería B por más que tenga ese rol en general.
+Cada rol se resuelve SIEMPRE junto con `tenant_id` — un `dueno_sede` de la barbería A nunca debe poder autenticarse como admin de la barbería B por más que tenga ese rol en general.
 
 ## Autenticación
 
 - Usar el sistema de auth de Supabase (o el proveedor que use el proyecto) en vez de reinventar hashing/sesiones a mano.
 - Login por email/password y opción de OTP/magic link para clientes (fricción mínima en el flujo de reserva — no todo cliente quiere crear cuenta con contraseña).
 - Recuperación de contraseña: flujo estándar de token con expiración corta, nunca reutilizable.
-- Sesiones con expiración razonable para `barbero`/`tenant_owner` (dispositivo compartido en el local es un riesgo real — considerar logout automático por inactividad en esos roles).
+- Sesiones con expiración razonable para `barbero`/`dueno_sede` (dispositivo compartido en el local es un riesgo real — considerar logout automático por inactividad en esos roles).
 
 ## Perfiles de usuario
 

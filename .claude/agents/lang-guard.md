@@ -16,6 +16,8 @@ Ejemplos: `barberias`, `barberos`, `clientes`, `reservas`, `turnos_fila`, `membr
 
 Criterio ante duda: si el nombre describe **qué es** para el negocio → español. Si describe **cómo funciona** técnicamente → inglés como está, sin forzar traducción.
 
+**Identificadores en ASCII puro:** aunque la palabra sea en español, los identificadores de tabla/columna/enum en SQL van sin tildes ni "ñ" (`dueno_sede`, no `dueño_sede`; `sesion`, no `sesión`) — es una convención de portabilidad entre locales de Postgres, no una excepción al idioma. Texto visible al usuario (UI, mensajes) sí lleva tildes y "ñ" normalmente.
+
 ## Dónde buscar (todo el stack)
 
 | Capa | Qué buscar |
