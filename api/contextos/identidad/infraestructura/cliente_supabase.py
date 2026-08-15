@@ -25,3 +25,20 @@ from nucleo.configuracion import obtener_configuracion
 def obtener_cliente_supabase() -> Client:
     configuracion = obtener_configuracion()
     return create_client(configuracion.supabase_url, configuracion.supabase_secret_key)
+
+
+@lru_cache
+def obtener_cliente_supabase_auth() -> Client:
+    """Segundo cliente, separado del de arriba a propósito: inicializado con la clave
+    PÚBLICA (`publishable`), solo para las operaciones de Auth API (GoTrue) que
+    `AutenticadorSupabase` expone (registro, inicio de sesión).
+
+    Signup/login son operaciones que cualquier usuario anónimo puede invocar
+    legítimamente contra GoTrue -- usar la `secret` key ahí no otorga ningún privilegio
+    adicional (GoTrue no lo requiere para esas dos operaciones) y violaría el principio
+    de menor privilegio: si esta clave se filtrara, solo permite lo que el propio
+    endpoint público de Auth ya permite a cualquiera, nunca bypasear RLS de
+    `roles_usuario`/`sesiones` como sí podría la `secret` key.
+    """
+    configuracion = obtener_configuracion()
+    return create_client(configuracion.supabase_url, configuracion.supabase_publishable_key)

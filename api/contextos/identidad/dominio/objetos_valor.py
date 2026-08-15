@@ -93,6 +93,21 @@ class Sesion:
 
 
 @dataclass(frozen=True, slots=True)
+class DatosSesionAuth:
+    """Resultado de un registro o inicio de sesión exitoso contra Supabase Auth: lo mínimo
+    que el cliente (frontend) necesita para operar a partir de ahí. No es "la respuesta
+    de GoTrue" -- es lo que el dominio de `identidad` decide que le importa de esa
+    respuesta (ver `dominio.puertos.AutenticadorPuerto`); el resto (metadata del
+    proveedor, tipo de token, etc.) se descarta en el adaptador.
+    """
+
+    access_token: str
+    refresh_token: str
+    usuario_id: str
+    expira_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class ContextoIdentidad:
     """Resultado final del caso de uso `ResolverContextoIdentidad`.
 

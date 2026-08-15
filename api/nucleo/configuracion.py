@@ -30,10 +30,14 @@ class ConfiguracionApp(BaseSettings):
     supabase_secret_key: str = Field(alias="SUPABASE_SECRET_KEY")
 
     # Clave pública nueva (sistema nuevo de API keys de Supabase, reemplaza a `anon`). El
-    # backend hoy no la necesita para nada -- ninguno de sus adaptadores llama a Supabase
-    # sin privilegios elevados -- pero se documenta acá para cuando el frontend la consuma
-    # (cliente `supabase-js` en el navegador).
-    supabase_publishable_key: str = Field(default="", alias="SUPABASE_PUBLISHABLE_KEY")
+    # frontend la sigue necesitando para su propio cliente `supabase-js` (consultas
+    # PostgREST protegidas por RLS), y el backend también la usa ahora: las operaciones
+    # de registro/login que expone `identidad` (`AutenticadorSupabase`) llaman a la Auth
+    # API (GoTrue) con esta clave, nunca con `supabase_secret_key` -- signup/login son
+    # operaciones que un usuario anónimo puede invocar legítimamente, usar la secret key
+    # ahí no da privilegio adicional (GoTrue no lo requiere) y viola el principio de
+    # menor privilegio.
+    supabase_publishable_key: str = Field(alias="SUPABASE_PUBLISHABLE_KEY")
 
     # Validación del JWT emitido por Supabase Auth (GoTrue). Este proyecto firma con
     # claves asimétricas (ES256/RS256) publicadas en un JWKS rotable -- no expone un

@@ -11,6 +11,10 @@ from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
 
+from contextos.identidad.aplicacion.iniciar_sesion_con_credenciales import (
+    IniciarSesionConCredenciales,
+)
+from contextos.identidad.aplicacion.registrar_usuario import RegistrarUsuario
 from contextos.identidad.aplicacion.resolver_contexto_identidad import ResolverContextoIdentidad
 from contextos.identidad.dominio.excepciones import (
     SesionCerrada,
@@ -21,7 +25,11 @@ from contextos.identidad.dominio.excepciones import (
     TokenInvalido,
 )
 from contextos.identidad.dominio.objetos_valor import ContextoIdentidad
-from contextos.identidad.infraestructura.cliente_supabase import obtener_cliente_supabase
+from contextos.identidad.infraestructura.autenticador_supabase import AutenticadorSupabase
+from contextos.identidad.infraestructura.cliente_supabase import (
+    obtener_cliente_supabase,
+    obtener_cliente_supabase_auth,
+)
 from contextos.identidad.infraestructura.repositorio_roles_supabase import RepositorioRolesSupabase
 from contextos.identidad.infraestructura.repositorio_sesiones_supabase import (
     RepositorioSesionesSupabase,
@@ -92,3 +100,21 @@ def obtener_contexto_identidad(
 
 
 ContextoIdentidadDep = Annotated[ContextoIdentidad, Depends(obtener_contexto_identidad)]
+
+
+@lru_cache
+def obtener_caso_uso_registrar_usuario() -> RegistrarUsuario:
+    cliente_auth = obtener_cliente_supabase_auth()
+    return RegistrarUsuario(autenticador=AutenticadorSupabase(cliente=cliente_auth))
+
+
+@lru_cache
+def obtener_caso_uso_iniciar_sesion_con_credenciales() -> IniciarSesionConCredenciales:
+    cliente_auth = obtener_cliente_supabase_auth()
+    return IniciarSesionConCredenciales(autenticador=AutenticadorSupabase(cliente=cliente_auth))
+
+
+RegistrarUsuarioDep = Annotated[RegistrarUsuario, Depends(obtener_caso_uso_registrar_usuario)]
+IniciarSesionConCredencialesDep = Annotated[
+    IniciarSesionConCredenciales, Depends(obtener_caso_uso_iniciar_sesion_con_credenciales)
+]
