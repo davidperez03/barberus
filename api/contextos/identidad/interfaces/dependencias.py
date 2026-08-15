@@ -6,6 +6,7 @@ usa -- si mañana cambia el proveedor de datos, solo este módulo cambia.
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
@@ -54,12 +55,13 @@ def obtener_sesion_id(x_sesion_id: Annotated[str | None, Header()] = None) -> st
     return x_sesion_id
 
 
+@lru_cache
 def obtener_caso_uso_resolver_contexto() -> ResolverContextoIdentidad:
     configuracion = obtener_configuracion()
     cliente_supabase = obtener_cliente_supabase()
     return ResolverContextoIdentidad(
         validador_token=ValidadorJwtSupabase(
-            secreto=configuracion.supabase_jwt_secret,
+            jwks_url=configuracion.supabase_jwks_url,
             audiencia=configuracion.supabase_jwt_audiencia,
         ),
         repositorio_roles=RepositorioRolesSupabase(cliente=cliente_supabase),

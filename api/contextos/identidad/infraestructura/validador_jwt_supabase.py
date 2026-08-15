@@ -1,17 +1,18 @@
 """Adaptador concreto de `ValidadorTokenPuerto` contra los JWT que emite Supabase Auth/GoTrue.
 
-Implementa la validación con el secreto simétrico del proyecto (`SUPABASE_JWT_SECRET`,
-HS256) -- el mecanismo hoy vigente en la mayoría de proyectos Supabase ("legacy JWT
-secret"). Si el proyecto migra a firma asimétrica (RS256/ES256 vía JWKS rotable), este
-adaptador es el único lugar a cambiar: se reemplaza `jwt.decode(..., key=secreto, ...)`
-por un `jwt.PyJWKClient(jwks_url).get_signing_key_from_jwt(token)` -- el resto del
-sistema (dominio, aplicación, `interfaces/`) no se entera, porque solo conoce
-`ValidadorTokenPuerto`. Pendiente explícito para un PR futuro, no bloqueante para este.
+Este proyecto firma sus JWT con claves asimétricas (ES256/RS256) publicadas en un JWKS
+rotable (`SUPABASE_JWKS_URL`), no con un secreto simétrico compartido -- el sistema
+"legacy" de `SUPABASE_JWT_SECRET`/HS256 no aplica acá. `jwt.PyJWKClient` resuelve, para
+cada token, cuál de las claves publicadas en el JWKS lo firmó (por `kid`) y descarga/
+cachea el JWK set; `jwt.decode` valida la firma con esa clave pública.
+
+El resto del sistema (dominio, aplicación, `interfaces/`) no se entera de este mecanismo,
+porque solo conoce `ValidadorTokenPuerto`.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 import jwt
@@ -19,18 +20,38 @@ import jwt
 from contextos.identidad.dominio.excepciones import TokenInvalido
 from contextos.identidad.dominio.objetos_valor import DatosToken
 
+ALGORITMOS_JWKS_SOPORTADOS = ("ES256", "RS256")
+
 
 @dataclass(frozen=True, slots=True)
 class ValidadorJwtSupabase:
-    secreto: str
+    jwks_url: str
     audiencia: str = "authenticated"
+    algoritmos: tuple[str, ...] = ALGORITMOS_JWKS_SOPORTADOS
+    _cliente_jwks: jwt.PyJWKClient = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        # Un único `PyJWKClient` por instancia (y esta instancia vive una sola vez por
+        # proceso, ver `interfaces/dependencias.py`): evita golpear el endpoint JWKS en
+        # cada request -- `PyJWKClient` ya cachea el JWK set internamente, pero
+        # instanciarlo una sola vez es la práctica recomendada, análoga al `lru_cache` de
+        # `obtener_cliente_supabase`.
+        #
+        # Decisión consciente: `PyJWKClient` usa sus defaults (`cache_jwk_set=True`, TTL
+        # de 5 minutos) sobre el JWK set completo. Esto implica que una clave revocada del
+        # proyecto Supabase (removida del JWKS) puede seguir aceptándose hasta 5 minutos
+        # si ya estaba cacheada -- ventana estándar de cualquier cliente JWKS (Auth0,
+        # Firebase, etc.), no una regresión de este cambio. No se ajusta el TTL, solo se
+        # documenta.
+        object.__setattr__(self, "_cliente_jwks", jwt.PyJWKClient(self.jwks_url))
 
     def validar(self, token_jwt: str) -> DatosToken:
         try:
+            clave_firma = self._cliente_jwks.get_signing_key_from_jwt(token_jwt)
             claims = jwt.decode(
                 token_jwt,
-                key=self.secreto,
-                algorithms=["HS256"],
+                key=clave_firma.key,
+                algorithms=list(self.algoritmos),
                 audience=self.audiencia,
             )
         except jwt.PyJWTError as error:
