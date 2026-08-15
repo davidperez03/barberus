@@ -13,6 +13,7 @@ from typing import Protocol
 
 from contextos.identidad.dominio.objetos_valor import (
     AsignacionRol,
+    DatosSesionAuth,
     DatosToken,
     NivelAutenticacion,
     Sesion,
@@ -61,9 +62,50 @@ class RepositorioSesionesPuerto(Protocol):
         dispositivo: str | None,
         ip: str | None,
     ) -> Sesion:
-        """Crea la fila de sesión al iniciar sesión (fuera del alcance de este PR invocarlo
-        desde un endpoint de login propio -- hoy el login lo resuelve Supabase Auth
-        directo desde el frontend; este puerto queda listo para cuando el backend
-        orqueste ese paso).
+        """Crea la fila de sesión al iniciar sesión.
+
+        Nota: distinto de `AutenticadorPuerto.iniciar_sesion` (que autentica contra
+        Supabase Auth/GoTrue) -- este puerto solo escribe la metadata de aplicación en
+        `sesiones` (timeout diferenciado por rol, UX). Orquestar ambos desde un mismo
+        caso de uso queda fuera del alcance de este PR: `aplicacion.iniciar_sesion_con_credenciales`
+        hoy solo resuelve el `AutenticadorPuerto`.
+        """
+        ...
+
+
+class AutenticadorPuerto(Protocol):
+    """Registra e inicia sesión de usuarios contra Supabase Auth (GoTrue).
+
+    El backend hace de proxy de estas dos operaciones (en vez de dejar que el frontend
+    llame a `supabase-js` directo) para poder probarlas desde `/docs` y para que toda la
+    dependencia de Supabase Auth quede encerrada en un adaptador de `infraestructura/` --
+    mismo patrón que `ValidadorTokenPuerto`.
+
+    Implementación concreta: `infraestructura.autenticador_supabase.AutenticadorSupabase`.
+    """
+
+    def registrar(self, correo: str, contrasena: str) -> DatosSesionAuth:
+        """Crea una cuenta nueva en Supabase Auth.
+
+        Levanta `dominio.excepciones.RegistroSinSesionInmediata` si no se obtuvo sesión
+        de inmediato -- deliberadamente la MISMA excepción tanto si el correo era
+        genuinamente nuevo (confirmación pendiente) como si ya tenía cuenta: nunca debe
+        poder distinguirse cuál de los dos casos ocurrió a partir de la respuesta de este
+        puerto (anti-enumeración de cuentas, ver `docs/ARCHITECTURE.md`).
+
+        Nunca asigna ningún rol en `roles_usuario` -- eso ocurre recién en la primera
+        reserva del cliente (ver `docs/ARCHITECTURE.md`), es responsabilidad de otro
+        caso de uso, no de este puerto.
+        """
+        ...
+
+    def iniciar_sesion(self, correo: str, contrasena: str) -> DatosSesionAuth:
+        """Autentica un usuario ya registrado contra Supabase Auth.
+
+        Levanta `dominio.excepciones.CredencialesInvalidas` si el correo/contraseña no
+        corresponden a ninguna cuenta, si la contraseña es incorrecta, o si la cuenta
+        existe pero no ha confirmado su correo -- deliberadamente el mismo error genérico
+        en los tres casos (anti-enumeración: no revelar que un correo existe pero está
+        sin confirmar).
         """
         ...

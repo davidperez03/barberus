@@ -6,9 +6,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from contextos.identidad.dominio.objetos_valor import ContextoIdentidad
+from contextos.identidad.dominio.objetos_valor import ContextoIdentidad, DatosSesionAuth
 
 
 class SesionRespuesta(BaseModel):
@@ -45,4 +45,29 @@ class ContextoIdentidadRespuesta(BaseModel):
             tenant_id=contexto.rol_activo.tenant_id,
             rol=contexto.rol_activo.rol.value,
             sesion=sesion,
+        )
+
+
+class CredencialesPeticion(BaseModel):
+    """Body de `POST /identidad/registro` y `POST /identidad/iniciar-sesion`."""
+
+    correo: EmailStr
+    contrasena: str = Field(min_length=8, description="Mínimo 8 caracteres (mínimo de GoTrue).")
+
+
+class DatosSesionAuthRespuesta(BaseModel):
+    """Respuesta de `POST /identidad/registro` y `POST /identidad/iniciar-sesion`."""
+
+    access_token: str
+    refresh_token: str
+    usuario_id: str
+    expira_at: datetime
+
+    @classmethod
+    def desde_dominio(cls, datos: DatosSesionAuth) -> DatosSesionAuthRespuesta:
+        return cls(
+            access_token=datos.access_token,
+            refresh_token=datos.refresh_token,
+            usuario_id=datos.usuario_id,
+            expira_at=datos.expira_at,
         )

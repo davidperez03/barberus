@@ -67,6 +67,34 @@ Endpoint de verificación end-to-end: `GET /identidad/contexto` (requiere
 `Authorization: Bearer <jwt>`; opcionalmente `X-Tenant-Id` si el usuario tiene roles en
 más de un tenant, y `X-Sesion-Id` para incluir el estado de la sesión).
 
+### Registro e inicio de sesión
+
+El login/registro NO se deja en manos del frontend llamando a `supabase-js` directo: el
+backend hace de proxy de Supabase Auth (GoTrue) para que ambos flujos se puedan probar
+desde `/docs` y para que toda la dependencia de Supabase Auth quede encerrada en un
+adaptador de `infraestructura/` (`AutenticadorSupabase`) -- mismo patrón que
+`ValidadorJwtSupabase`. Este adaptador usa un cliente `supabase-py` separado,
+inicializado con la clave PÚBLICA (`SUPABASE_PUBLISHABLE_KEY`), nunca con la
+`SUPABASE_SECRET_KEY` que usa el resto de `identidad` (signup/login no requieren
+privilegios elevados).
+
+- `POST /identidad/registro` -- body `{"correo": str, "contrasena": str}` (mínimo 8
+  caracteres). Crea la cuenta en Supabase Auth. **No asigna ningún rol**: `cliente` se
+  autoasigna recién en la primera reserva (ver `docs/ARCHITECTURE.md`). Responde `201`
+  con `{access_token, refresh_token, usuario_id, expira_at}` si hay sesión inmediata;
+  `202` con un mensaje genérico si no la hay -- deliberadamente el MISMO `202`, sin
+  distinción posible, tanto si el correo era nuevo (confirmación pendiente) como si ya
+  tenía cuenta: no existe un `409` para este endpoint, sería una fuga de enumeración de
+  cuentas (ver "Recuperación de contraseña y enumeración de usuarios" en
+  `docs/ARCHITECTURE.md`).
+- `POST /identidad/iniciar-sesion` -- mismo body. Responde `200` con los mismos campos;
+  `401` con un mensaje genérico si el correo/contraseña no coinciden o si la cuenta
+  existe pero no ha confirmado su correo (mismo criterio anti-enumeración).
+
+Los tokens devueltos son los mismos que emitiría Supabase Auth directo: se usan igual
+como `Authorization: Bearer <access_token>` contra `GET /identidad/contexto` y el resto
+de endpoints.
+
 ## Tests
 
 `uv run pytest -q` desde `api/`. Los tests de `dominio/`/`aplicacion/` no requieren red
