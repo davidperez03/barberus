@@ -1,0 +1,13 @@
+# Python / api (FastAPI)
+api/.venv/
+api/__pycache__/
+**/__pycache__/
+*.pyc
+.env
+api/.env
+.pytest_cache/
+.ruff_cache/
+
+# Supabase CLI (entorno local, no versionado)
+supabase/.branches/
+supabase/.temp/

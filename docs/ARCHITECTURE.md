@@ -1,11 +1,13 @@
 # Arquitectura de Barberus
 
-> Estado de este documento: describe el esquema de base de datos, que es lo único
-> implementado hoy (ver `README.md`). La sección "Flujo de una reserva" describe la capa
-> de base de datos con detalle verificado contra el código real, y el resto del flujo
-> (frontend → API → tiempo real) tal como está **planeado** en la configuración de los
-> agentes de este repo — se marcará explícitamente como no implementado donde aplique, y
-> se completará con detalle real en cuanto exista ese código.
+> Estado de este documento: describe el esquema de base de datos (implementado) y el
+> scaffolding del backend en `api/` (implementado para el contexto `identidad`; el resto
+> de contextos son esqueleto sin lógica todavía — ver `README.md` y `api/README.md`). La
+> sección "Flujo de una reserva" describe la capa de base de datos con detalle verificado
+> contra el código real, y el resto del flujo (agenda vía API → tiempo real) tal como
+> está **planeado** en la configuración de los agentes de este repo — se marcará
+> explícitamente como no implementado donde aplique, y se completará con detalle real en
+> cuanto exista ese código.
 
 ## Qué es Barberus
 
@@ -322,6 +324,57 @@ reimplementa a mano. `signInWithPassword` devuelve el mismo error genérico exis
 cuenta, y `resetPasswordForEmail` siempre responde "ok": no agregar un endpoint propio de
 "¿existe este correo?" que reintroduzca la fuga de enumeración de usuarios.
 
+## Backend (API): arquitectura hexagonal + DDD
+
+Capa nueva respecto a lo anterior de este documento (que describe el esquema de base de
+datos y su RLS). Esta sección describe la capa de encima: cómo `api/` (FastAPI) organiza
+la lógica de negocio y resuelve identidad/tenant por request. Detalle completo de la
+convención de capas y contextos en
+[`.claude/agents/backend-fastapi.md`](../.claude/agents/backend-fastapi.md); cómo correr
+el proyecto en [`api/README.md`](../api/README.md). No se repite acá el detalle de
+`roles_usuario`/`sesiones`/RLS ya cubierto arriba en "Identidad y autenticación" — esta
+sección es sobre la capa de aplicación que consume ese esquema, no sobre el esquema en sí.
+
+**Por qué dos capas de autorización, no una.** RLS (arriba) es la garantía de que,
+incluso si un bug del backend se saltara toda validación, Postgres seguiría negando el
+acceso cross-tenant a nivel de fila. La resolución de identidad en `api/` es la
+*primera* capa, la que decide qué `tenant_id` aplica a una request y con qué rol,
+**antes** de que cualquier query llegue a Postgres -- necesaria igual, porque RLS por sí
+sola no puede decidir "¿cuál de los varios tenants de este usuario aplica a esta
+request en particular?": esa es una decisión de la request (qué sede seleccionó el
+usuario en el frontend), no del dato.
+
+**Contextos delimitados** (`api/contextos/`): cada área de negocio (`identidad`,
+`agenda`, `fila`, `membresias`, `reportes`) es un módulo con sus propias 4 capas
+(`dominio/aplicacion/infraestructura/interfaces`), dependencias apuntando siempre hacia
+adentro. Un contexto nunca importa el `dominio`/`infraestructura` interno de otro -- pide
+lo que necesita a través de la superficie pública del contexto dueño (p.ej.
+`contextos.identidad.aplicacion.contexto_publico`). Hoy solo `identidad` tiene lógica;
+el resto son carpetas esqueleto que fijan la convención para los PR que los implementen.
+
+**Resolución de tenant cuando un usuario tiene roles en varios (`identidad`).** Como
+`roles_usuario` permite varias filas por `usuario_id` (ver arriba, "Roles:
+`roles_usuario`"), el caso de uso `ResolverContextoIdentidad`
+(`api/contextos/identidad/aplicacion/resolver_contexto_identidad.py`) nunca elige un
+tenant por su cuenta cuando hay más de uno: exige que el llamador lo especifique
+explícito (header `X-Tenant-Id`), y si no lo hace, falla con `TenantAmbiguo` en vez de
+adivinar -- réplica intencional, a nivel de aplicación, de la lección del hallazgo de
+`current_tenant_id()`/`limit 1` sin `order by` corregido en el esquema (ver arriba, "Cómo
+se resuelve el aislamiento"). Con una sola asignación no hace falta el header (no hay
+ambigüedad posible). `administrador_plataforma` es la excepción: puede operar sobre
+cualquier `tenant_id` solicitado, incluida ausencia de uno (contexto de plataforma).
+
+**Timeout de sesión diferenciado por rol.** El mismo caso de uso aplica la política ya
+documentada arriba ("Política de sesión/inactividad por rol"): timeout corto (15 min)
+para `barbero`/`dueno_sede` (dispositivo compartido en el local), normal (8 h) para
+`cliente`/`administrador_plataforma`, comparando contra `sesiones.expira_at` -- lógica de
+dominio pura en `contextos/identidad/dominio/servicios.py`, sin escritura a la base en
+cada request (se lee `sesiones`, no se actualiza en cada llamada).
+
+**Endpoint de verificación:** `GET /identidad/contexto` devuelve el usuario/rol/tenant/
+sesión resueltos a partir del JWT de la request -- pensado para que QA y el futuro
+frontend verifiquen esta capa contra un Supabase real.
+
 ## Flujo de una reserva
 
 **Base de datos (implementado, verificado):**
@@ -343,13 +396,15 @@ cuenta, y `resetPasswordForEmail` siempre responde "ok": no agregar un endpoint 
    (`recalcular_membresia_cliente`): incrementa `visitas_totales` y evalúa si sube de
    nivel.
 
-**Frontend → API → tiempo real (planeado, no implementado):** según la configuración de
-los agentes de este repo, la reserva se crearía desde un formulario Next.js
-(`react-hook-form` + `zod`), un endpoint FastAPI validaría y ejecutaría la transacción de
-arriba, y la fila en vivo (`turnos_fila`) se sincronizaría entre barbero y cliente vía
-Supabase Realtime. Ninguna de estas tres capas tiene código todavía — no hay `api/` ni
-`frontend/` en el repo — así que este párrafo describe el plan, no el comportamiento
-actual.
+**Frontend → API → tiempo real (planeado, parcialmente implementado):** según la
+configuración de los agentes de este repo, la reserva se crearía desde un formulario
+Next.js (`react-hook-form` + `zod`), un endpoint FastAPI del contexto `agenda` validaría
+y ejecutaría la transacción de arriba, y la fila en vivo (`turnos_fila`) se
+sincronizaría entre barbero y cliente vía Supabase Realtime. Hoy existe el scaffolding de
+`api/` y el contexto `identidad` (resolución de JWT/rol/tenant, ver sección "Backend
+(API)" más abajo), pero el contexto `agenda` en sí es solo esqueleto de carpetas, sin
+endpoints ni lógica — no hay `frontend/` en el repo tampoco. Este párrafo sigue
+describiendo mayormente el plan, no el comportamiento actual del flujo de reserva.
 
 ## Decisiones de negocio ya cerradas
 
@@ -398,3 +453,7 @@ evitar ambigüedad de zona horaria en el nombre del archivo.
   multi-tenant.
 - `supabase/migrations/001_extensiones_y_helpers.sql` a `010_identidad_extendida.sql` —
   código fuente de todo lo descrito en este documento.
+- [`.claude/agents/backend-fastapi.md`](../.claude/agents/backend-fastapi.md) — convención
+  completa de arquitectura hexagonal + DDD y contextos delimitados del backend.
+- [`api/README.md`](../api/README.md) — cómo correr/testear la API, estructura real de
+  `api/contextos/`.
