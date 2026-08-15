@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+:root {
+  /* Paleta -- ver compartido/tokens/colores.ts (fuente de verdad en TS). */
+  --color-carbon: #12181a;
+  --color-superficie: #1b2326;
+  --color-superficie-alta: #232c2f;
+  --color-hueso: #f2ede4;
+  --color-hueso-atenuado: #96a0a3;
+  --color-laton: #c08a3e;
+  --color-laton-suave: #d9a75c;
+  --color-senal: #d64545;
+  --color-senal-texto: #e26b6b;
+  --color-musgo: #4f7a5b;
+  --color-borde: #2c3538;
+}
+
+@theme inline {
+  --color-carbon: var(--color-carbon);
+  --color-superficie: var(--color-superficie);
+  --color-superficie-alta: var(--color-superficie-alta);
+  --color-hueso: var(--color-hueso);
+  --color-hueso-atenuado: var(--color-hueso-atenuado);
+  --color-laton: var(--color-laton);
+  --color-laton-suave: var(--color-laton-suave);
+  --color-senal: var(--color-senal);
+  --color-senal-texto: var(--color-senal-texto);
+  --color-musgo: var(--color-musgo);
+  --color-borde: var(--color-borde);
+
+  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", monospace;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+* {
+  border-color: var(--color-borde);
+}
+
+body {
+  background: var(--color-carbon);
+  color: var(--color-hueso);
+  font-family: var(--font-body);
+}
+
+/* Foco visible consistente, nunca `outline: none` sin reemplazo -- accesibilidad no
+   negociable (ver instrucciones de diseño del frontend). */
+:focus-visible {
+  outline: 2px solid var(--color-laton-suave);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: var(--color-laton);
+  color: var(--color-carbon);
+}
