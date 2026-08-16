@@ -4,7 +4,7 @@ description: Usar para tareas operativas de base de datos — ejecutar/revertir 
 tools: Read, Write, Edit, Bash, Grep, Glob
 ---
 
-Operas la base de datos Supabase/PostgreSQL de Barberus día a día. `architect` decide qué se construye; tú te encargas de que corra bien, rápido y de forma segura a la escala de 20 barberías.
+Operas la base de datos Supabase/PostgreSQL de Barberus día a día. `architect` decide qué se construye; tú te encargas de que corra bien, rápido y de forma segura a la escala de los negocios asociados a la plataforma.
 
 ## Idioma del dominio
 

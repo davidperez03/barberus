@@ -22,12 +22,12 @@
 
 create table public.clientes (
   id                  uuid primary key default gen_random_uuid(),
-  tenant_id           uuid not null references public.barberias(id) on delete cascade,
+  tenant_id           uuid not null references public.negocios(id) on delete cascade,
   usuario_id          uuid null references auth.users(id) on delete set null,
   nombre_completo     text not null,
   telefono            text,
   correo              text,
-  barbero_preferido_id uuid null,
+  profesional_preferido_id uuid null,
   preferencias        jsonb not null default '{}'::jsonb, -- preferencias libres (estilo, alergias, etc.)
   activo              boolean not null default true,
   created_at          timestamptz not null default now(),
@@ -35,18 +35,20 @@ create table public.clientes (
   -- Habilita FK compuesta (cliente_id, tenant_id) desde reservas: la base de datos rechaza,
   -- además de RLS, que una reserva asigne un cliente de OTRO tenant.
   constraint clientes_id_tenant_unico unique (id, tenant_id),
-  -- barbero_preferido_id debe pertenecer al MISMO tenant que el cliente.
+  -- profesional_preferido_id debe pertenecer al MISMO tenant que el cliente.
   -- ON DELETE RESTRICT (no SET NULL): una FK compuesta con SET NULL pondría también
-  -- tenant_id en null, violando su NOT NULL. Los barberos se dan de baja con activo=false,
+  -- tenant_id en null, violando su NOT NULL. Los profesionales se dan de baja con activo=false,
   -- no con DELETE físico, así que RESTRICT es el comportamiento esperado.
-  constraint clientes_barbero_preferido_tenant_fkey
-    foreign key (barbero_preferido_id, tenant_id) references public.barberos(id, tenant_id) on delete restrict
+  constraint clientes_profesional_preferido_tenant_fkey
+    foreign key (profesional_preferido_id, tenant_id) references public.profesionales(id, tenant_id) on delete restrict
 );
 
 comment on table public.clientes is
   'Perfil de cliente aislado por sede (tenant_id). Un mismo cliente en 2 sedes = 2 filas independientes, por decisión de negocio.';
 comment on column public.clientes.usuario_id is
   'Cuenta auth.users si el cliente tiene login (OTP/magic link). Nullable: el staff puede crear clientes walk-in sin cuenta. Un mismo usuario_id puede repetirse en varias filas (una por tenant) — no es único globalmente, ver idx_clientes_tenant_usuario_unico.';
+comment on column public.clientes.profesional_preferido_id is
+  'Profesional preferido del cliente, siempre del mismo negocio (tenant_id compartido, reforzado por FK compuesta contra profesionales).';
 
 create index idx_clientes_tenant_id on public.clientes (tenant_id);
 create index idx_clientes_tenant_telefono on public.clientes (tenant_id, telefono);
@@ -125,27 +127,27 @@ $$;
 comment on function public.es_dueno_del_cliente(uuid) is
   'true si el usuario autenticado ES el cliente p_cliente_id (usuario_id propio + rol cliente vigente en roles_usuario para el tenant de esa fila).';
 
--- Notas del barbero sobre el cliente: histórico de observaciones internas (no confundir con
--- "preferencias" del cliente, que puede ser autodeclarado). Solo visibles para staff, nunca
--- para el propio cliente.
+-- Notas del profesional sobre el cliente: histórico de observaciones internas (no confundir
+-- con "preferencias" del cliente, que puede ser autodeclarado). Solo visibles para staff,
+-- nunca para el propio cliente.
 create table public.notas_cliente (
   id          uuid primary key default gen_random_uuid(),
-  tenant_id   uuid not null references public.barberias(id) on delete cascade,
+  tenant_id   uuid not null references public.negocios(id) on delete cascade,
   cliente_id  uuid not null,
-  barbero_id  uuid null,
+  profesional_id  uuid null,
   nota        text not null,
   created_at  timestamptz not null default now(),
 
   constraint notas_cliente_cliente_tenant_fkey foreign key (cliente_id, tenant_id)
     references public.clientes(id, tenant_id) on delete cascade,
-  -- ON DELETE RESTRICT (no SET NULL): mismo motivo que clientes_barbero_preferido_tenant_fkey
+  -- ON DELETE RESTRICT (no SET NULL): mismo motivo que clientes_profesional_preferido_tenant_fkey
   -- — una FK compuesta con SET NULL pondría también tenant_id en null, violando su NOT NULL.
-  constraint notas_cliente_barbero_tenant_fkey foreign key (barbero_id, tenant_id)
-    references public.barberos(id, tenant_id) on delete restrict
+  constraint notas_cliente_profesional_tenant_fkey foreign key (profesional_id, tenant_id)
+    references public.profesionales(id, tenant_id) on delete restrict
 );
 
 comment on table public.notas_cliente is
-  'Notas internas del barbero sobre un cliente (preferencias observadas, incidencias). No visibles para el cliente.';
+  'Notas internas del profesional sobre un cliente (preferencias observadas, incidencias). No visibles para el cliente.';
 
 create index idx_notas_cliente_tenant_cliente on public.notas_cliente (tenant_id, cliente_id, created_at desc);
 

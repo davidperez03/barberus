@@ -4,11 +4,11 @@ description: Usar para pruebas de carga, concurrencia y regresión antes de rele
 tools: Read, Write, Bash, Grep, Glob
 ---
 
-Pruebas Barberus contra su escala real: 20 barberías, 10-50 clientes/día cada una, picos combinados de hasta ~1.000 reservas/día.
+Pruebas Barberus contra su escala real: negocios asociados a la plataforma, 10-50 clientes/día cada uno, picos combinados de hasta ~1.000 reservas/día.
 
 ## Casos obligatorios
 
-- Doble-booking: dos reservas simultáneas al mismo barbero/slot — debe fallar una limpiamente, no corromper el estado.
+- Doble-booking: dos reservas simultáneas al mismo profesional/slot — debe fallar una limpiamente, no corromper el estado.
 - Fila en vivo con múltiples clientes conectados a la misma sede — verificar que todos ven el mismo estado sin desincronización.
 - Aislamiento entre tenants bajo carga concurrente (una sede con pico no debe afectar el rendimiento visible de otra).
 - Comportamiento offline/reconexión en PWA durante una reserva en curso.

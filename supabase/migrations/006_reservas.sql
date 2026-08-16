@@ -7,7 +7,7 @@
 --    (reserva_servicios), no es un campo editable a mano. Un trigger recalcula
 --    reservas.fin_programado cada vez que cambia la combinación de servicios.
 --
--- 2. No-doble-booking de un barbero se garantiza con un EXCLUDE CONSTRAINT (gist), no solo
+-- 2. No-doble-booking de un profesional se garantiza con un EXCLUDE CONSTRAINT (gist), no solo
 --    con un trigger: es atómico a nivel de motor, corre incluso bajo concurrencia real
 --    (dos requests intentando agendar el mismo slot al mismo tiempo), cosa que un trigger
 --    con SELECT+INSERT no garantiza sin locks explícitos. Es DEFERRABLE INITIALLY DEFERRED
@@ -15,7 +15,7 @@
 --    reserva_servicios en la misma transacción y el trigger recalcula el rango real; el
 --    chequeo de solapamiento se pospone al COMMIT de esa transacción.
 --
--- 3. cliente_id/barbero_id llevan FK COMPUESTA (id, tenant_id) contra clientes/barberos:
+-- 3. cliente_id/profesional_id llevan FK COMPUESTA (id, tenant_id) contra clientes/profesionales:
 --    refuerza a nivel de esquema (no solo RLS) que una reserva no puede mezclar entidades
 --    de dos tenants distintos. Esto también es lo que hace SEGURO simplificar las policies
 --    de autoservicio del cliente a solo `es_dueno_del_cliente(cliente_id)` sin repetir el
@@ -32,9 +32,9 @@
 
 create table public.reservas (
   id                uuid primary key default gen_random_uuid(),
-  tenant_id         uuid not null references public.barberias(id) on delete cascade,
+  tenant_id         uuid not null references public.negocios(id) on delete cascade,
   cliente_id        uuid not null,
-  barbero_id        uuid not null,
+  profesional_id        uuid not null,
   estado            text not null default 'pendiente'
                        check (estado in ('pendiente','confirmada','en_progreso','completada','cancelada','no_asistio')),
   origen            text not null default 'en_linea'
@@ -48,15 +48,15 @@ create table public.reservas (
   constraint reservas_fin_despues_inicio check (fin_programado > inicio_programado),
   constraint reservas_cliente_tenant_fkey foreign key (cliente_id, tenant_id)
     references public.clientes(id, tenant_id) on delete restrict,
-  constraint reservas_barbero_tenant_fkey foreign key (barbero_id, tenant_id)
-    references public.barberos(id, tenant_id) on delete restrict,
+  constraint reservas_profesional_tenant_fkey foreign key (profesional_id, tenant_id)
+    references public.profesionales(id, tenant_id) on delete restrict,
   -- Habilita FK compuesta (reserva_id, tenant_id) desde turnos_fila.
   constraint reservas_id_tenant_unico unique (id, tenant_id),
 
-  -- No-doble-booking: mismo barbero no puede tener 2 reservas activas con rango solapado.
+  -- No-doble-booking: mismo profesional no puede tener 2 reservas activas con rango solapado.
   -- Reservas canceladas/no-asistió no cuentan (liberan el slot).
   constraint reservas_sin_doble_reserva exclude using gist (
-    barbero_id with =,
+    profesional_id with =,
     tstzrange(inicio_programado, fin_programado, '[)') with &&
   ) where (estado not in ('cancelada', 'no_asistio')) deferrable initially deferred
 );
@@ -66,7 +66,7 @@ comment on table public.reservas is
 
 create index idx_reservas_tenant_inicio on public.reservas (tenant_id, inicio_programado);
 create index idx_reservas_tenant_estado on public.reservas (tenant_id, estado);
-create index idx_reservas_barbero_inicio on public.reservas (barbero_id, inicio_programado);
+create index idx_reservas_profesional_inicio on public.reservas (profesional_id, inicio_programado);
 create index idx_reservas_cliente on public.reservas (cliente_id);
 
 create trigger trg_reservas_updated_at
@@ -140,7 +140,7 @@ comment on function public.es_dueno_de_reserva(uuid) is
 -- Combinación de servicios de una reserva (N servicios por reserva -> duración dinámica).
 create table public.reserva_servicios (
   id                          uuid primary key default gen_random_uuid(),
-  tenant_id                   uuid not null references public.barberias(id) on delete cascade,
+  tenant_id                   uuid not null references public.negocios(id) on delete cascade,
   reserva_id                  uuid not null references public.reservas(id) on delete cascade,
   servicio_id                 uuid not null,
   -- snapshot de la duración del servicio al momento de agendar: si el catálogo cambia

@@ -1,7 +1,7 @@
 -- Migración: extensiones y helpers de multi-tenant
 -- Autor: architect
 --
--- Prepara la base para RLS multi-tenant en las 20 barberías:
+-- Prepara la base para RLS multi-tenant en los negocios de la plataforma:
 --   - extensiones necesarias (uuid, exclusion constraints por rango)
 --   - tabla roles_usuario: mapea auth.users -> (tenant_id, rol). Un mismo usuario_id PUEDE
 --     tener varias filas (una por tenant): p.ej. dueno_sede en la sede A y cliente en la
@@ -29,7 +29,7 @@
 --
 -- Nota de idioma: nombres de dominio del negocio van en español (tablas, columnas,
 -- estados, y también los valores del enum de rol: administrador_plataforma, dueno_sede,
--- barbero, cliente — catálogo canónico definido en auth-users.md). `tenant_id`, `id`,
+-- profesional, cliente — catálogo canónico definido en auth-users.md). `tenant_id`, `id`,
 -- `created_at`, `updated_at`, y los sufijos de política (_select/_insert/_update/_delete)
 -- se dejan en inglés a propósito: son mecánica técnica genérica del multi-tenant/RLS,
 -- reutilizada igual en TODAS las tablas sin importar el idioma del dominio, y `tenant_id`
@@ -44,7 +44,7 @@
 --     más adelante, es_dueno_del_cliente() (005_clientes.sql) y es_dueno_de_reserva()
 --     (006_reservas.sql — definidas ahí y no aquí porque dependen de tablas que todavía no
 --     existen en esta migración): TODAS van en español — cada una encapsula una decisión de
---     negocio ("¿este usuario pertenece a esta barbería?", "¿es staff de esta barbería?",
+--     negocio ("¿este usuario pertenece a este negocio?", "¿es staff de este negocio?",
 --     "¿es su dueño?", "¿es este cliente específico?") y se leen como una pregunta de
 --     negocio en cada policy. TODAS reciben el id de la fila que evalúan como parámetro
 --     explícito — ninguna asume un "tenant/cliente actual" implícito.
@@ -58,19 +58,19 @@ create extension if not exists pgcrypto;   -- gen_random_uuid()
 create extension if not exists btree_gist; -- exclusion constraints con uuid + tstzrange
 
 -- Roles del sistema (ver .claude/agents/auth-users.md). administrador_plataforma no tiene tenant_id
--- (ve las 20 barberías); el resto SIEMPRE está atado a una única barbería, pero un mismo
+-- (ve todos los negocios); el resto SIEMPRE está atado a un único negocio, pero un mismo
 -- usuario_id puede tener varias filas (una por tenant).
 do $$
 begin
   if not exists (select 1 from pg_type where typname = 'rol_app') then
-    create type public.rol_app as enum ('administrador_plataforma', 'dueno_sede', 'barbero', 'cliente');
+    create type public.rol_app as enum ('administrador_plataforma', 'dueno_sede', 'profesional', 'cliente');
   end if;
 end $$;
 
 create table if not exists public.roles_usuario (
   id          uuid primary key default gen_random_uuid(),
   usuario_id  uuid not null references auth.users(id) on delete cascade,
-  tenant_id   uuid null, -- FK real se agrega en 002_barberias.sql una vez existe barberias
+  tenant_id   uuid null, -- FK real se agrega en 002_negocios.sql una vez existe negocios
   rol         public.rol_app not null,
   created_at  timestamptz not null default now(),
   constraint roles_usuario_tenant_requerido_salvo_administrador_plataforma
@@ -82,14 +82,14 @@ create table if not exists public.roles_usuario (
 );
 
 comment on table public.roles_usuario is
-  'Mapea un usuario de auth.users a su rol dentro de una barbería (tenant). Un mismo usuario_id puede tener varias filas (una por tenant). Base de todas las políticas RLS.';
+  'Mapea un usuario de auth.users a su rol dentro de un negocio (tenant). Un mismo usuario_id puede tener varias filas (una por tenant). Base de todas las políticas RLS.';
 
 alter table public.roles_usuario enable row level security;
 
 -- Cualquier usuario autenticado puede leer su(s) propia(s) fila(s) de rol (necesario para
 -- que el frontend sepa qué tenants/roles tiene). Nadie puede leer roles de otros usuarios
 -- salvo administrador_plataforma. Escritura de roles queda fuera de este esquema: la
--- gestiona auth-users vía función/endpoint controlado (alta de barbero, alta de dueno_sede,
+-- gestiona auth-users vía función/endpoint controlado (alta de profesional, alta de dueno_sede,
 -- etc.), nunca INSERT directo del cliente.
 create policy roles_usuario_select_propio on public.roles_usuario
   for select
@@ -108,9 +108,9 @@ as $$
   );
 $$;
 
--- ¿El usuario autenticado pertenece a esta barbería, en CUALQUIER rol (dueno_sede, barbero
+-- ¿El usuario autenticado pertenece a este negocio, en CUALQUIER rol (dueno_sede, profesional
 -- o cliente)? Para recursos visibles a todo miembro de la sede (p.ej. catálogo de
--- servicios/barberos/niveles de membresía, que un cliente también necesita ver).
+-- servicios/profesionales/niveles de membresía, que un cliente también necesita ver).
 create or replace function public.es_miembro_del_tenant(p_tenant_id uuid)
 returns boolean
 language sql
@@ -124,8 +124,8 @@ as $$
   );
 $$;
 
--- ¿El usuario autenticado es staff operativo (dueno_sede o barbero) de ESTA barbería
--- específica? Reemplaza el viejo patrón `tenant_id = current_tenant_id() and
+-- ¿El usuario autenticado es staff operativo (dueno_sede o profesional) de ESTE negocio
+-- específico? Reemplaza el viejo patrón `tenant_id = current_tenant_id() and
 -- es_personal_sede()` — ahora la comparación de tenant vive DENTRO de la función,
 -- parametrizada por la fila que evalúa cada policy, no por un "tenant actual" global.
 create or replace function public.es_personal_del_tenant(p_tenant_id uuid)
@@ -139,11 +139,11 @@ as $$
     select 1 from public.roles_usuario ru
     where ru.usuario_id = auth.uid()
       and ru.tenant_id = p_tenant_id
-      and ru.rol in ('dueno_sede', 'barbero')
+      and ru.rol in ('dueno_sede', 'profesional')
   );
 $$;
 
--- ¿El usuario autenticado es dueno_sede de ESTA barbería específica? Reemplaza el viejo
+-- ¿El usuario autenticado es dueno_sede de ESTE negocio específico? Reemplaza el viejo
 -- patrón `tenant_id = current_tenant_id() and current_user_role() = 'dueno_sede'`.
 create or replace function public.es_dueno_del_tenant(p_tenant_id uuid)
 returns boolean
@@ -160,8 +160,8 @@ as $$
   );
 $$;
 
--- ¿El usuario autenticado tiene una fila roles_usuario con rol='cliente' en ESTA barbería
--- específica? Es la contraparte de es_personal_del_tenant/es_dueno_del_tenant, pero para
+-- ¿El usuario autenticado tiene una fila roles_usuario con rol='cliente' en ESTE negocio
+-- específico? Es la contraparte de es_personal_del_tenant/es_dueno_del_tenant, pero para
 -- el rol 'cliente'. Se usa para el auto-registro/auto-servicio de clientes: valida contra
 -- roles_usuario (fuente de verdad, escrita solo por auth-users), NUNCA confiando en el
 -- propio valor de una columna usuario_id/tenant_id de la fila de negocio que el cliente
@@ -183,11 +183,11 @@ as $$
 $$;
 
 comment on function public.es_administrador_plataforma() is
-  'true si el usuario autenticado es operador de plataforma (ve las 20 barberías).';
+  'true si el usuario autenticado es operador de plataforma (ve todos los negocios).';
 comment on function public.es_miembro_del_tenant(uuid) is
-  'true si el usuario autenticado tiene CUALQUIER rol (dueno_sede, barbero o cliente) en el tenant dado.';
+  'true si el usuario autenticado tiene CUALQUIER rol (dueno_sede, profesional o cliente) en el tenant dado.';
 comment on function public.es_personal_del_tenant(uuid) is
-  'true si el usuario autenticado es dueno_sede o barbero del tenant dado (staff operativo de esa sede específica).';
+  'true si el usuario autenticado es dueno_sede o profesional del tenant dado (staff operativo de esa sede específica).';
 comment on function public.es_dueno_del_tenant(uuid) is
   'true si el usuario autenticado es dueno_sede del tenant dado.';
 comment on function public.es_cliente_del_tenant(uuid) is
