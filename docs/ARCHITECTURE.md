@@ -99,13 +99,53 @@ lo que permite simplificar policies como `es_dueno_del_cliente(cliente_id)` sin 
 chequeo de `tenant_id`: si no coincidieran, el INSERT ya habría fallado por la FK antes de
 llegar a evaluarse la policy.
 
+### Excepción única: lectura pública cross-tenant (`resumen_fila_publico`)
+
+Todo lo anterior asume "toda lectura está scoped a soy miembro de este tenant". Hay UNA sola
+excepción en todo el esquema, introducida en `011_fila_publica_agregada.sql`: un visitante
+sin login debe poder comparar cuánta fila hay en varios negocios de la plataforma antes de
+decidir a cuál ir, y ubicarlos en un mapa (Leaflet/react-leaflet, ya decidido en frontend).
+El mecanismo:
+
+- **Nunca se toca `turnos_fila` ni sus policies.** Se creó una tabla derivada,
+  `resumen_fila_publico` (una fila por negocio), con solo `nombre_sede`, `slug_sede`,
+  `activo`, `latitud`, `longitud`, `personas_en_fila` y `tiempo_espera_estimado_minutos` —
+  cero `cliente_id`/`profesional_id`/datos individuales, ni siquiera con columnas limitadas
+  por policy. Una tabla que físicamente no tiene esas columnas es más simple de auditar que
+  una policy que promete "solo estas columnas" sobre una tabla que sí las tiene.
+- **Mantenida por trigger** (`sincronizar_resumen_fila_publico` sobre `turnos_fila`,
+  `sincronizar_resumen_fila_publico_desde_negocio` sobre `negocios`, ambas
+  `SECURITY DEFINER`), no una vista calculada al vuelo: el tráfico de lectura es público y
+  potencialmente alto; las escrituras en `turnos_fila` son al ritmo de check-ins de un
+  negocio (bajo volumen). La lectura pública es un lookup por PK.
+- **`tiempo_espera_estimado_minutos` usa datos reales o es `NULL`.** Se calcula con la
+  duración promedio real de servicio (`hora_completado - hora_inicio`) de las últimas 24h de
+  ese negocio; si no hay historial reciente, es `NULL` explícito — nunca un valor inventado.
+- **Anti-abuso:** ninguna policy de escritura para `es_personal_del_tenant`/
+  `es_dueno_del_tenant` — los negocios de la plataforma son competidores entre sí, y un
+  `dueno_sede` no puede tener forma de inflar/deflactar su propio número frente a los demás.
+  Solo `administrador_plataforma` tiene un `for all` de corrección manual.
+- **La única policy sin `auth.uid()` de todo el esquema:** `resumen_fila_publico_select_publico`
+  — `for select to anon, authenticated using (activo)`.
+- **Coordenadas para el mapa:** `negocios` gana `latitud numeric(9,6)`/`longitud
+  numeric(9,6)` (nullable, con `check` de rango físico y de consistencia mutua — no puede
+  existir una sin la otra). Se descartó PostGIS por sobre-ingeniería (el caso de uso es
+  ubicar puntos simples en Leaflet, no queries geoespaciales). Como `negocios` no tiene
+  lectura pública, las coordenadas se desnormalizan también en `resumen_fila_publico` —así el
+  frontend del mapa hace un solo query público en vez de abrir una segunda tabla con lectura
+  pública.
+
+Detalle completo de la decisión (incluida la validación contra Postgres real) en
+`scripts/migrations/APPLIED.md`, sección `011_fila_publica_agregada.sql`.
+
 ## Las tablas
 
 Todas con RLS habilitado. Migración de origen entre paréntesis.
 
 **Identidad y catálogo**
 - `roles_usuario` (`001`) — mapa `usuario_id` → `(tenant_id, rol)`. Base de todo el RLS.
-- `negocios` (`002`) — tenant raíz: nombre, `slug` único, zona horaria, contacto.
+- `negocios` (`002`, `latitud`/`longitud` agregadas en `011`) — tenant raíz: nombre, `slug`
+  único, zona horaria, contacto, coordenadas opcionales para el mapa público.
 - `profesionales` (`003`) — 1:1 con una sede (`tenant_id` normal, sin tabla de rotación —
   decisión de negocio ya cerrada). `usuario_id` nullable (puede no tener login todavía).
 - `servicios` (`004`) — catálogo por sede: nombre, `duracion_minutos`. Sin precio/billing
@@ -139,6 +179,12 @@ Todas con RLS habilitado. Migración de origen entre paréntesis.
   (unique index parcial). `numero_turno` se asigna de forma atómica por trigger.
 - `contadores_fila_diarios` (`007`) — contador `(tenant_id, fecha_fila) → último número`,
   usado internamente por el trigger de numeración; no se toca directamente desde la app.
+- `resumen_fila_publico` (`011`) — ÚNICA tabla de lectura pública cross-tenant del esquema
+  (sin `auth.uid()`, rol `anon` incluido). Una fila por negocio: `personas_en_fila` +
+  `tiempo_espera_estimado_minutos` (agregado, `NULL` si no hay base real) + `latitud`/
+  `longitud` (desnormalizadas desde `negocios`, para el mapa público), mantenida por trigger
+  desde `turnos_fila`/`negocios`. Ver sección "Excepción única: lectura pública cross-tenant"
+  arriba.
 
 **Membresías (solo tracking, sin cobro)**
 - `niveles_membresia` (`008`) — catálogo de niveles por sede: `visitas_minimas`,
@@ -453,7 +499,7 @@ evitar ambigüedad de zona horaria en el nombre del archivo.
 - `scripts/migrations/APPLIED.md` — registro de cada migración aplicada/diseñada, estado y
   rollback, más el detalle completo del hallazgo de seguridad corregido en el esquema
   multi-tenant.
-- `supabase/migrations/001_extensiones_y_helpers.sql` a `010_identidad_extendida.sql` —
+- `supabase/migrations/001_extensiones_y_helpers.sql` a `011_fila_publica_agregada.sql` —
   código fuente de todo lo descrito en este documento.
 - [`.claude/agents/backend-fastapi.md`](../.claude/agents/backend-fastapi.md) — convención
   completa de arquitectura hexagonal + DDD y contextos delimitados del backend.
