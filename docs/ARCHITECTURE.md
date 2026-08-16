@@ -1,8 +1,9 @@
 # Arquitectura de Barberus
 
 > Estado de este documento: describe el esquema de base de datos (implementado) y el
-> scaffolding del backend en `api/` (implementado para el contexto `identidad`; el resto
-> de contextos son esqueleto sin lógica todavía — ver `README.md` y `api/README.md`). La
+> scaffolding del backend en `api/` (implementado para los contextos `identidad` y `fila`
+> -- este último solo con el endpoint público `GET /fila/publica`; `agenda`/`membresias`/
+> `reportes` siguen como esqueleto sin lógica -- ver `README.md` y `api/README.md`). La
 > sección "Flujo de una reserva" describe la capa de base de datos con detalle verificado
 > contra el código real, y el resto del flujo (agenda vía API → tiempo real) tal como
 > está **planeado** en la configuración de los agentes de este repo — se marcará
@@ -397,8 +398,34 @@ usuario en el frontend), no del dato.
 (`dominio/aplicacion/infraestructura/interfaces`), dependencias apuntando siempre hacia
 adentro. Un contexto nunca importa el `dominio`/`infraestructura` interno de otro -- pide
 lo que necesita a través de la superficie pública del contexto dueño (p.ej.
-`contextos.identidad.aplicacion.contexto_publico`). Hoy solo `identidad` tiene lógica;
-el resto son carpetas esqueleto que fijan la convención para los PR que los implementen.
+`contextos.identidad.aplicacion.contexto_publico`). Hoy `identidad` y `fila` tienen
+lógica; `agenda`/`membresias`/`reportes` siguen como carpetas esqueleto que fijan la
+convención para los PR que los implementen.
+
+**Factory compartido de clientes Supabase (`nucleo/cliente_supabase.py`).** La
+instanciación de `Client` (`create_client` + `@lru_cache` para un único cliente por
+proceso) es idéntica en cualquier contexto -- lo único que cambia es qué key usar, y esa
+decisión (con su razonamiento de seguridad) vive en el `infraestructura/
+cliente_supabase.py` propio de cada contexto, que reexporta las funciones de `nucleo/`:
+`obtener_cliente_supabase_secreto()` (bypasea RLS, usa `SUPABASE_SECRET_KEY` -- solo
+cuando el propio backend ya resolvió la autorización antes de la query, p.ej.
+`identidad` consultando `roles_usuario`/`sesiones`) y `obtener_cliente_supabase_publico()`
+(respeta RLS, usa `SUPABASE_PUBLISHABLE_KEY` -- mismo privilegio que un cliente anónimo,
+usado por `identidad` para signup/login contra GoTrue y por `fila` para leer
+`resumen_fila_publico`). `nucleo/` nunca decide cuál de las dos usar; ese criterio es
+responsabilidad de cada contexto.
+
+**Contexto `fila`: comparador público de fila entre negocios.** `GET /fila/publica`
+(`api/contextos/fila/interfaces/router.py`) -- sin JWT, sin `tenant_id`, es a propósito
+el único endpoint cross-tenant de toda la API, espejo del único caso de lectura pública
+del esquema descrito arriba en "Excepción única: lectura pública cross-tenant
+(`resumen_fila_publico`)". Devuelve la lista de negocios activos con
+`tenant_id, nombre_sede, slug_sede, personas_en_fila, tiempo_espera_estimado_minutos,
+latitud, longitud`, leyendo `resumen_fila_publico` con el cliente Supabase público (RLS
+hace el filtro `activo = true`, el adaptador no lo repite). No hay lógica de negocio en
+el caso de uso (`ListarNegociosConFilaPublica`) más allá de invocar el repositorio -- todo
+el cálculo (tiempo estimado, qué negocios están activos) ya vive en la base vía triggers
+(ver esa misma sección arriba).
 
 **Resolución de tenant cuando un usuario tiene roles en varios (`identidad`).** Como
 `roles_usuario` permite varias filas por `usuario_id` (ver arriba, "Roles:
