@@ -1,33 +1,34 @@
-"""Cliente `supabase-py` compartido por los adaptadores de este contexto.
+"""Clientes `supabase-py` usados por los adaptadores de `identidad`.
 
-Un único cliente por proceso, con la `secret` key (sistema nuevo de API keys de Supabase,
-reemplaza a `service_role`): el backend consulta
-`roles_usuario`/`sesiones` con privilegios que bypasean RLS a propósito -- la
-autorización real la resuelve el propio caso de uso de `identidad` (dominio) antes de
-que el resultado llegue a ningún otro contexto; RLS en Supabase queda como segunda capa
-de defensa para accesos directos (PostgREST desde el frontend), no como la única, tal
-como ya lo asume `docs/ARCHITECTURE.md`.
+La instanciación genérica (`create_client` + cache de un cliente por proceso) vive en
+`nucleo.cliente_supabase` -- este módulo solo decide, con su razonamiento propio, qué
+key usa cada cliente y lo reexporta bajo el nombre que ya usa el resto de `identidad`.
 
-Único lugar de todo `identidad` (y, por convención, de cualquier contexto futuro) donde
-se instancia el cliente de Supabase -- el resto de `infraestructura/` lo recibe inyectado.
+Único lugar de `identidad` donde se decide qué key usar -- el resto de
+`infraestructura/` recibe el cliente inyectado.
 """
 
 from __future__ import annotations
 
-from functools import lru_cache
+from supabase import Client
 
-from supabase import Client, create_client
+from nucleo.cliente_supabase import (
+    obtener_cliente_supabase_publico,
+    obtener_cliente_supabase_secreto,
+)
 
-from nucleo.configuracion import obtener_configuracion
 
-
-@lru_cache
 def obtener_cliente_supabase() -> Client:
-    configuracion = obtener_configuracion()
-    return create_client(configuracion.supabase_url, configuracion.supabase_secret_key)
+    """Cliente con la `secret` key (sistema nuevo de API keys de Supabase, reemplaza a
+    `service_role`): el backend consulta `roles_usuario`/`sesiones` con privilegios que
+    bypasean RLS a propósito -- la autorización real la resuelve el propio caso de uso
+    de `identidad` (dominio) antes de que el resultado llegue a ningún otro contexto;
+    RLS en Supabase queda como segunda capa de defensa para accesos directos (PostgREST
+    desde el frontend), no como la única, tal como ya lo asume `docs/ARCHITECTURE.md`.
+    """
+    return obtener_cliente_supabase_secreto()
 
 
-@lru_cache
 def obtener_cliente_supabase_auth() -> Client:
     """Segundo cliente, separado del de arriba a propósito: inicializado con la clave
     PÚBLICA (`publishable`), solo para las operaciones de Auth API (GoTrue) que
@@ -40,5 +41,4 @@ def obtener_cliente_supabase_auth() -> Client:
     endpoint público de Auth ya permite a cualquiera, nunca bypasear RLS de
     `roles_usuario`/`sesiones` como sí podría la `secret` key.
     """
-    configuracion = obtener_configuracion()
-    return create_client(configuracion.supabase_url, configuracion.supabase_publishable_key)
+    return obtener_cliente_supabase_publico()
