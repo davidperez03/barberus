@@ -22,9 +22,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Barberus — la barbería, sin fila de pie",
+  title: "Barberus — negocios de belleza, sin fila de pie",
   description:
-    "Barberus digitaliza la agenda y la fila en vivo de tu barbería: tus clientes ven su turno en tiempo real, tú reduces los no-shows.",
+    "Barberus conecta a barberías, salones de uñas y otros negocios de belleza y cuidado personal con sus clientes: agenda en 30 segundos y fila en vivo, para que nadie espere de pie adivinando su turno.",
 };
 
 export default function LayoutRaiz({ children }: { children: React.ReactNode }) {

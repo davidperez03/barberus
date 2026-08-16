@@ -1,12 +1,12 @@
 "use client";
 
 /**
- * Elemento firma de la landing: una recreación tipo "tablero de salidas" (split-flap) de
- * cómo se ve la fila en vivo de una sede -- la pieza más memorable del producto según el
- * proceso de diseño (ver plan de tokens). Es un MOCK decorativo con datos inventados para
- * la landing, no la implementación real del contexto `fila` (que no existe todavía) --
- * cuando se construya `contextos/fila/`, esta pieza probablemente se reemplace por la
- * versión conectada a datos reales; por eso vive en `compartido/ui/`, no en un contexto.
+ * Recreación tipo "tablero de salidas" (split-flap) de cómo se ve la fila en vivo de un
+ * negocio asociado -- la pieza central del hero con parallax (`HeroLanding`), que la usa
+ * como capa de primer plano. Es un MOCK decorativo con datos inventados para la landing,
+ * no la implementación real del contexto `fila` (que no existe todavía) -- cuando se
+ * construya `contextos/fila/`, esta pieza probablemente se reemplace por la versión
+ * conectada a datos reales; por eso vive en `compartido/ui/`, no en un contexto.
  *
  * Respeta `prefers-reduced-motion`: si el usuario lo pide, se congela en un estado fijo
  * en vez de ciclar posiciones.
@@ -19,7 +19,7 @@ interface TurnoFila {
   id: string;
   numero: string;
   cliente: string;
-  barbero: string;
+  profesional: string;
   estado: "en_corte" | "proximo" | "espera";
 }
 
@@ -31,22 +31,22 @@ const ESTADOS: Record<TurnoFila["estado"], { etiqueta: string; color: string }> 
 
 const TANDAS: TurnoFila[][] = [
   [
-    { id: "a", numero: "04", cliente: "Camilo R.", barbero: "Andrés", estado: "en_corte" },
-    { id: "b", numero: "05", cliente: "Diego M.", barbero: "Julián", estado: "proximo" },
-    { id: "c", numero: "06", cliente: "Sara P.", barbero: "Andrés", estado: "espera" },
-    { id: "d", numero: "07", cliente: "León G.", barbero: "Julián", estado: "espera" },
+    { id: "a", numero: "04", cliente: "Camilo R.", profesional: "Andrés", estado: "en_corte" },
+    { id: "b", numero: "05", cliente: "Diego M.", profesional: "Julián", estado: "proximo" },
+    { id: "c", numero: "06", cliente: "Sara P.", profesional: "Andrés", estado: "espera" },
+    { id: "d", numero: "07", cliente: "León G.", profesional: "Julián", estado: "espera" },
   ],
   [
-    { id: "b", numero: "05", cliente: "Diego M.", barbero: "Julián", estado: "en_corte" },
-    { id: "c", numero: "06", cliente: "Sara P.", barbero: "Andrés", estado: "proximo" },
-    { id: "d", numero: "07", cliente: "León G.", barbero: "Julián", estado: "espera" },
-    { id: "e", numero: "08", cliente: "Vale T.", barbero: "Andrés", estado: "espera" },
+    { id: "b", numero: "05", cliente: "Diego M.", profesional: "Julián", estado: "en_corte" },
+    { id: "c", numero: "06", cliente: "Sara P.", profesional: "Andrés", estado: "proximo" },
+    { id: "d", numero: "07", cliente: "León G.", profesional: "Julián", estado: "espera" },
+    { id: "e", numero: "08", cliente: "Vale T.", profesional: "Andrés", estado: "espera" },
   ],
   [
-    { id: "c", numero: "06", cliente: "Sara P.", barbero: "Andrés", estado: "en_corte" },
-    { id: "d", numero: "07", cliente: "León G.", barbero: "Julián", estado: "proximo" },
-    { id: "e", numero: "08", cliente: "Vale T.", barbero: "Andrés", estado: "espera" },
-    { id: "f", numero: "09", cliente: "Iván C.", barbero: "Julián", estado: "espera" },
+    { id: "c", numero: "06", cliente: "Sara P.", profesional: "Andrés", estado: "en_corte" },
+    { id: "d", numero: "07", cliente: "León G.", profesional: "Julián", estado: "proximo" },
+    { id: "e", numero: "08", cliente: "Vale T.", profesional: "Andrés", estado: "espera" },
+    { id: "f", numero: "09", cliente: "Iván C.", profesional: "Julián", estado: "espera" },
   ],
 ];
 
@@ -68,7 +68,7 @@ export function TableroFilaEnVivo() {
     <div className="rounded-2xl border border-borde bg-superficie p-4 shadow-[0_20px_60px_-30px_rgba(0,0,0,0.8)] sm:p-5">
       <div className="mb-4 flex items-center justify-between">
         <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-hueso-atenuado">
-          Fila en vivo — Sede Chapinero
+          Fila en vivo — Barbería Chapinero
         </p>
         <span className="flex items-center gap-1.5 font-mono text-[11px] text-senal-texto">
           <span className="relative flex h-1.5 w-1.5">
@@ -102,7 +102,7 @@ export function TableroFilaEnVivo() {
                 </span>
                 <div className="flex flex-col leading-tight">
                   <span className="text-sm text-hueso">{turno.cliente}</span>
-                  <span className="text-xs text-hueso-atenuado">con {turno.barbero}</span>
+                  <span className="text-xs text-hueso-atenuado">con {turno.profesional}</span>
                 </div>
               </div>
               <span
