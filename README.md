@@ -8,8 +8,8 @@ North star del producto: reducir los no-shows y el tiempo de espera en fila.
 
 ## Estado actual del proyecto
 
-**Existen el esquema de base de datos y el scaffolding del backend.** No hay frontend
-implementado todavía. Lo que sí existe y está completo:
+**Existen el esquema de base de datos, el scaffolding del backend y el scaffolding del
+frontend (con el contexto `identidad` end-to-end).** Lo que sí existe y está completo:
 
 - `supabase/migrations/`: 10 migraciones SQL (`001` a `010`) que definen 20 tablas —
   13 de dominio (barberías, barberos, servicios, clientes, reservas, fila, membresías) y
@@ -22,6 +22,11 @@ implementado todavía. Lo que sí existe y está completo:
   `identidad` implementado end-to-end (resolución de JWT/rol/tenant desde Supabase Auth) y
   el resto de contextos (`agenda`, `fila`, `membresias`, `reportes`) como esqueleto de
   carpetas, pendientes de lógica en PRs futuros. Ver [`api/README.md`](api/README.md).
+- `frontend/`: scaffolding de Next.js (App Router + TypeScript + Tailwind), misma
+  arquitectura hexagonal + DDD por contextos que `api/`, con el contexto `identidad`
+  implementado (login/registro/resolución de contexto contra los 3 endpoints reales del
+  backend) y la landing principal. `agenda`/`fila`/`cliente`/`membresia` sin construir
+  todavía. Ver [`frontend/README.md`](frontend/README.md).
 
 Las migraciones están **diseñadas pero no aplicadas a ningún entorno Supabase todavía**
 (ver la columna "Estado" en `scripts/migrations/APPLIED.md`); sí fueron validadas
@@ -36,7 +41,7 @@ El stack está definido en la configuración de los agentes de este repo
 |---|---|---|
 | Base de datos | Supabase / PostgreSQL, con Row Level Security | Implementado (esquema completo, no aplicado a un entorno aún) |
 | Backend | FastAPI (Python), arquitectura hexagonal + DDD por contextos delimitados | Scaffolding + contexto `identidad` implementados (ver `api/README.md`); `agenda`/`fila`/`membresias`/`reportes` sin lógica todavía |
-| Frontend | Next.js (App Router) + TypeScript + Tailwind | No implementado |
+| Frontend | Next.js (App Router) + TypeScript + Tailwind, arquitectura hexagonal + DDD por contextos | Scaffolding + contexto `identidad` (login/registro/landing) implementados (ver `frontend/README.md`); `agenda`/`fila`/`cliente`/`membresia` sin construir todavía |
 | Tiempo real (fila en vivo) | Supabase Realtime | No implementado |
 
 ## Estructura de carpetas
@@ -58,16 +63,28 @@ barberus/
 │   ├── nucleo/                # shared kernel: configuración, excepciones base, tipos
 │   ├── main.py                # composición: monta el router de cada contexto
 │   └── tests/
+├── frontend/                  # frontend Next.js — arquitectura hexagonal + DDD por contextos
+│   ├── src/
+│   │   ├── contextos/
+│   │   │   └── identidad/     # login/registro/contexto — ver frontend/README.md
+│   │   │       ├── dominio/         # tipos + validación (zod) puros, sin React/fetch
+│   │   │       ├── aplicacion/      # hooks de caso de uso (use-registro, use-iniciar-sesion...)
+│   │   │       ├── infraestructura/ # cliente HTTP hacia api/, almacén de sesión
+│   │   │       └── ui/               # formulario de acceso, panel de sesión
+│   │   ├── compartido/         # design tokens, componentes UI genéricos, animación
+│   │   └── app/                 # App Router — cascarón, solo compone ui/ de los contextos
+│   └── README.md
 ├── docs/
 │   └── ARCHITECTURE.md      # modelo multi-tenant, tablas, decisiones de diseño
 └── .claude/agents/          # configuración de los agentes que trabajan este repo
 ```
 
-Cada contexto bajo `api/contextos/` sigue la misma convención de 4 capas
-(`dominio/aplicacion/infraestructura/interfaces`) descrita en
-[`.claude/agents/backend-fastapi.md`](.claude/agents/backend-fastapi.md) y detallada en
-[`api/README.md`](api/README.md). No existe todavía carpeta `frontend/` — se documentará
-aquí en cuanto exista código en ella.
+Cada contexto bajo `api/contextos/` y bajo `frontend/src/contextos/` sigue la misma
+convención de 4 capas (`dominio/aplicacion/infraestructura/interfaces` en el backend;
+`dominio/aplicacion/infraestructura/ui` en el frontend), descrita en
+[`.claude/agents/backend-fastapi.md`](.claude/agents/backend-fastapi.md) /
+[`.claude/agents/frontend-nextjs.md`](.claude/agents/frontend-nextjs.md) y detallada en
+[`api/README.md`](api/README.md) / [`frontend/README.md`](frontend/README.md).
 
 ## Cómo aplicar las migraciones localmente
 
