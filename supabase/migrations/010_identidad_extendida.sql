@@ -5,8 +5,8 @@
 -- la riqueza del esquema auth.* que ya mantiene Supabase internamente -- "completo, listo
 -- para crecer": estructura MFA-ready e identidades vinculadas aunque la LÓGICA no se
 -- implemente todavía. Explícitamente FUERA de alcance: SSO/SAML empresarial
--- (sso_providers/sso_domains/saml_*) -- no aplica a un negocio de barberías con clientes y
--- dueños individuales, no una empresa cliente con su propio Identity Provider.
+-- (sso_providers/sso_domains/saml_*) -- no aplica a una plataforma de negocios independientes
+-- con clientes y dueños individuales, no una empresa cliente con su propio Identity Provider.
 --
 -- Equivalencia con auth.* de Supabase (todas nuevas, ninguna reemplaza a auth.*, que sigue
 -- siendo la fuente de verdad de si un JWT es válido -- estas tablas son METADATA de
@@ -36,13 +36,13 @@
 --   sso_providers/sso_domains/saml_providers/saml_relay_states -> NO se construyen (fuera
 --                            de alcance, ver arriba).
 --
--- Todas las tablas nuevas cuelgan de usuario_id (auth.users), no de clientes/barberos
+-- Todas las tablas nuevas cuelgan de usuario_id (auth.users), no de clientes/profesionales
 -- (que son entidades DE NEGOCIO por sede, no de identidad): un dueno_sede o un
--- administrador_plataforma no tienen fila en clientes/barberos, pero sí necesitan perfil de
--- auth, sesiones y auditoría igual que un cliente o un barbero. tenant_id aparece SOLO donde
+-- administrador_plataforma no tienen fila en clientes/profesionales, pero sí necesitan perfil de
+-- auth, sesiones y auditoría igual que un cliente o un profesional. tenant_id aparece SOLO donde
 -- el negocio pidió explícitamente poder filtrar por sede (sesiones, auditoria_autenticacion)
 -- y es NULLABLE: representa el contexto de sede activo cuando es resoluble (login de un
--- barbero/dueno_sede de una sede concreta), no siempre aplica (cliente sin sede aún,
+-- profesional/dueno_sede de una sede concreta), no siempre aplica (cliente sin sede aún,
 -- administrador_plataforma).
 
 -- ============================================================================
@@ -55,7 +55,7 @@
 --    subquery corre con los privilegios del rol que hace el request y por lo tanto queda
 --    sujeta a roles_usuario_select_propio (usuario_id = auth.uid()), que solo deja ver las
 --    PROPIAS filas. Un dueno_sede consultando las filas de roles_usuario de otro usuario
---    (su barbero) vía esa subquery ve CERO filas siempre, así que el EXISTS da falso incluso
+--    (su profesional) vía esa subquery ve CERO filas siempre, así que el EXISTS da falso incluso
 --    cuando SÍ debería poder -- no es una fuga, es un falso negativo que rompe la función
 --    (confirmado con un UPDATE 0 en pruebas manuales). La solución, igual que el resto del
 --    esquema: una función SECURITY DEFINER que bypasea RLS a propósito, ya que internamente
@@ -87,7 +87,7 @@ as $$
 $$;
 
 comment on function public.es_personal_de_algun_tenant_del_usuario(uuid) is
-  'true si el usuario autenticado es dueno_sede o barbero de alguna sede donde p_usuario_id tiene un rol en roles_usuario. SECURITY DEFINER a propósito -- ver nota de la sección 0 sobre por qué un EXISTS inline sin esto falla en policies de otras tablas.';
+  'true si el usuario autenticado es dueno_sede o profesional de algún negocio donde p_usuario_id tiene un rol en roles_usuario. SECURITY DEFINER a propósito -- ver nota de la sección 0 sobre por qué un EXISTS inline sin esto falla en policies de otras tablas.';
 comment on function public.es_dueno_de_algun_tenant_del_usuario(uuid) is
   'true si el usuario autenticado es dueno_sede de alguna sede donde p_usuario_id tiene un rol en roles_usuario. SECURITY DEFINER a propósito -- ver nota de la sección 0.';
 
@@ -136,11 +136,11 @@ create table public.perfiles_usuario (
 );
 
 comment on table public.perfiles_usuario is
-  'Perfil de auth 1:1 con auth.users, legible desde PostgREST/RLS (auth.users no lo es). No duplica clientes/barberos (eso sigue siendo la entidad de negocio por sede) -- esto es identidad transversal a todos los roles, incluidos dueno_sede/administrador_plataforma que no tienen fila en clientes ni barberos.';
+  'Perfil de auth 1:1 con auth.users, legible desde PostgREST/RLS (auth.users no lo es). No duplica clientes/profesionales (eso sigue siendo la entidad de negocio por sede) -- esto es identidad transversal a todos los roles, incluidos dueno_sede/administrador_plataforma que no tienen fila en clientes ni profesionales.';
 comment on column public.perfiles_usuario.bloqueado_hasta is
-  'Bloqueo administrativo GLOBAL de la cuenta (toda Barberus, las 20 sedes), no por sede. SOLO administrador_plataforma puede modificarla -- ver trigger restringir_columnas_perfil_usuario. NO es "dueno_sede suspende a un barbero/cliente de SU sede" (eso ya existe con alcance correcto en clientes.activo/barberos.activo, columnas tenant-scoped por RLS estándar) -- mezclar ambos conceptos en un solo campo transversal permitía que un dueno_sede bloqueara a alguien de OTRA sede en toda la plataforma con solo una relación roles_usuario trivial (hallazgo bloqueante de multi-tenant-guard, ver scripts/migrations/APPLIED.md). Distinto también de auth.users.banned_until -- ese es un bloqueo a nivel de Supabase Auth que impide incluso emitir un JWT; este es "no puede operar en Barberus" aunque el login en sí siga funcionando. La app debe chequear los tres (banned_until, bloqueado_hasta, activo de la fila tenant-scoped) donde aplique.';
+  'Bloqueo administrativo GLOBAL de la cuenta (todos los negocios de la plataforma), no por sede. SOLO administrador_plataforma puede modificarla -- ver trigger restringir_columnas_perfil_usuario. NO es "dueno_sede suspende a un profesional/cliente de SU sede" (eso ya existe con alcance correcto en clientes.activo/profesionales.activo, columnas tenant-scoped por RLS estándar) -- mezclar ambos conceptos en un solo campo transversal permitía que un dueno_sede bloqueara a alguien de OTRO negocio en toda la plataforma con solo una relación roles_usuario trivial (hallazgo bloqueante de multi-tenant-guard, ver scripts/migrations/APPLIED.md). Distinto también de auth.users.banned_until -- ese es un bloqueo a nivel de Supabase Auth que impide incluso emitir un JWT; este es "no puede operar en Barberus" aunque el login en sí siga funcionando. La app debe chequear los tres (banned_until, bloqueado_hasta, activo de la fila tenant-scoped) donde aplique.';
 comment on column public.perfiles_usuario.metadata_app is
-  'Solo escribible por sistema (service_role) o administrador_plataforma -- ver trigger restringir_columnas_perfil_usuario. Nunca exponer edición directa al propio usuario NI a un dueno_sede/barbero editando el perfil de otro.';
+  'Solo escribible por sistema (service_role) o administrador_plataforma -- ver trigger restringir_columnas_perfil_usuario. Nunca exponer edición directa al propio usuario NI a un dueno_sede/profesional editando el perfil de otro.';
 comment on column public.perfiles_usuario.metadata_usuario is
   'Preferencias libres editables por el propio usuario (nombre para mostrar, avatar, etc.) -- única columna que el branch de autoservicio puede cambiar sin restricción.';
 
@@ -152,18 +152,18 @@ alter table public.perfiles_usuario enable row level security;
 
 -- Select: el propio usuario ve su perfil; administrador_plataforma ve cualquiera; staff de
 -- una sede ve el perfil de cualquier usuario que tenga un rol en ESA sede (para operar
--- bloqueo/verificación de sus barberos/clientes) -- resuelto contra roles_usuario, nunca
+-- bloqueo/verificación de sus profesionales/clientes) -- resuelto contra roles_usuario, nunca
 -- contra un tenant_id propio de esta tabla (no existe: el perfil es transversal).
 --
 -- DECISIÓN DE PRODUCTO, aceptada a propósito (revisada explícitamente en el ciclo de
 -- multi-tenant-guard, no es un descuido): como perfiles_usuario NO tiene tenant_id propio,
 -- correo_verificado/telefono_verificado/ultimo_login_at de un usuario son visibles para
 -- CUALQUIER sede con la que tenga alguna relación en roles_usuario, aunque el evento
--- (el login, la verificación) haya ocurrido en el contexto de OTRA sede -- y las 20
--- barberías son negocios independientes entre sí (potenciales competidores), no sub-sedes de
+-- (el login, la verificación) haya ocurrido en el contexto de OTRA sede -- y los negocios de
+-- la plataforma son independientes entre sí (potenciales competidores), no sub-sedes de
 -- un mismo tenant. Se acepta porque son solo 3 campos de estado operativo (no
 -- identidades_usuario/factores_autenticacion, que sí son estrictamente self+admin, ver sus
--- policies más abajo) y porque el caso de uso real (dueno_sede necesita saber si SU barbero
+-- policies más abajo) y porque el caso de uso real (dueno_sede necesita saber si SU profesional
 -- verificó su cuenta) lo requiere. Si en el futuro esto deja de ser aceptable, la fila
 -- correcta a agregar es un "último login POR TENANT" en la fila de roles_usuario (o una
 -- tabla de eventos ya filtrada por tenant, como sesiones/auditoria_autenticacion, que SÍ
@@ -212,18 +212,18 @@ create policy perfiles_usuario_update on public.perfiles_usuario
 -- importar qué columna sea ni si existía cuando se escribió este trigger.
 --
 --   1. eliminado_at (soft-delete de la CUENTA completa) y bloqueado_hasta (bloqueo GLOBAL de
---      la cuenta en las 20 sedes) SIEMPRE requieren administrador_plataforma -- ni el propio
+--      la cuenta en todos los negocios de la plataforma) SIEMPRE requieren administrador_plataforma -- ni el propio
 --      usuario ni ningún dueno_sede, sin importar que comparta sede con el usuario objetivo.
 --      bloqueado_hasta se sumó a esta regla tras un hallazgo bloqueante posterior: quedaba
 --      en el allow-list de "fila ajena", y como esa rama se habilita con
 --      es_dueno_de_algun_tenant_del_usuario (true con CUALQUIER rol compartido, incluido un
 --      'cliente' que el propio staff puede crear unilateralmente vía roles_usuario_insert,
 --      ver 009), un dueno_sede de la sede A podía "atarse" como cliente al dueno_sede o
---      barbero de la sede B con solo conocer su usuario_id/correo, y luego bloquearlo de
+--      profesional de la sede B con solo conocer su usuario_id/correo, y luego bloquearlo de
 --      operar en TODA la plataforma -- sabotaje directo entre negocios competidores. El
 --      bloqueo POR SEDE que un dueno_sede sí debe poder aplicar (p.ej. un cliente
 --      problemático de SU sede) ya existe con el alcance correcto en clientes.activo /
---      barberos.activo (tenant-scoped, RLS estándar de 003/005) -- no hacía falta una tabla
+--      profesionales.activo (tenant-scoped, RLS estándar de 003/005) -- no hacía falta una tabla
 --      nueva, solo sacar bloqueado_hasta del perfil transversal.
 --   2. Fuera de ese caso, administrador_plataforma no tiene restricción de columnas. Todos
 --      los demás quedan sujetos a la whitelist según de quién es la fila:
@@ -271,7 +271,7 @@ begin
   end if;
 
   if new.bloqueado_hasta is distinct from old.bloqueado_hasta then
-    raise exception 'Solo administrador_plataforma puede modificar bloqueado_hasta (bloqueo global de la cuenta, no por sede -- usa clientes.activo/barberos.activo para bloqueo por sede)'
+    raise exception 'Solo administrador_plataforma puede modificar bloqueado_hasta (bloqueo global de la cuenta, no por sede -- usa clientes.activo/profesionales.activo para bloqueo por sede)'
       using errcode = '42501';
   end if;
 
@@ -295,7 +295,7 @@ end;
 $$;
 
 comment on function public.restringir_columnas_perfil_usuario() is
-  'Whitelist REAL (deny-by-default vía diff de to_jsonb, no un denylist de nombres) de columnas por UPDATE de perfiles_usuario: eliminado_at y bloqueado_hasta solo administrador_plataforma (nunca dueno_sede, sin importar sede compartida -- bloqueado_hasta es global a las 20 sedes, no por tenant); fila propia solo metadata_usuario; fila ajena (staff/dueno_sede) solo correo_verificado/telefono_verificado. Excepción explícita vía barberus.contexto para la sincronización interna desde auth.users (soft-delete real). Corrige 2 hallazgos bloqueantes de multi-tenant-guard -- ver scripts/migrations/APPLIED.md.';
+  'Whitelist REAL (deny-by-default vía diff de to_jsonb, no un denylist de nombres) de columnas por UPDATE de perfiles_usuario: eliminado_at y bloqueado_hasta solo administrador_plataforma (nunca dueno_sede, sin importar sede compartida -- bloqueado_hasta es global a todos los negocios de la plataforma, no por tenant); fila propia solo metadata_usuario; fila ajena (staff/dueno_sede) solo correo_verificado/telefono_verificado. Excepción explícita vía barberus.contexto para la sincronización interna desde auth.users (soft-delete real). Corrige 2 hallazgos bloqueantes de multi-tenant-guard -- ver scripts/migrations/APPLIED.md.';
 
 create trigger trg_perfiles_usuario_restringir_columnas
   before update on public.perfiles_usuario
@@ -413,14 +413,14 @@ create policy identidades_usuario_select on public.identidades_usuario
 --    autenticación). NO reemplaza auth.sessions/el JWT -- Supabase/PostgREST sigue validando
 --    el JWT en cada request independientemente de esta tabla. Sirve para auditoría de
 --    dispositivos, "cerrar sesión en todos lados", y para que el backend aplique el timeout
---    diferenciado por rol documentado en 009_identidad_autenticacion.sql (barbero/dueno_sede:
+--    diferenciado por rol documentado en 009_identidad_autenticacion.sql (profesional/dueno_sede:
 --    corto + inactividad; cliente: normal), comparando ultima_actividad_at/expira_at.
 -- ============================================================================
 
 create table public.sesiones (
   id                  uuid primary key default gen_random_uuid(),
   usuario_id          uuid not null references auth.users(id) on delete cascade,
-  tenant_id           uuid null references public.barberias(id) on delete cascade, -- contexto de sede activo en esta sesión, cuando es resoluble (login como staff de una sede concreta); null para cliente sin sede aún o administrador_plataforma
+  tenant_id           uuid null references public.negocios(id) on delete cascade, -- contexto de sede activo en esta sesión, cuando es resoluble (login como staff de una sede concreta); null para cliente sin sede aún o administrador_plataforma
   dispositivo         text, -- descripción legible derivada del user-agent (p.ej. "Chrome en Windows"), la resuelve el backend al crear la fila
   user_agent          text,
   ip                  inet,
@@ -436,7 +436,7 @@ create table public.sesiones (
 comment on table public.sesiones is
   'Metadata de aplicación sobre sesiones (dispositivo/IP/nivel de autenticación/expiración por rol). No es la fuente de verdad de si un JWT es válido -- eso lo resuelve Supabase Auth/PostgREST con el JWT firmado; esta tabla es para UX (tus dispositivos, cerrar sesión remota) y para que el backend aplique el timeout diferenciado por rol.';
 comment on column public.sesiones.tenant_id is
-  'Sede activa en esta sesión cuando es resoluble (login de barbero/dueno_sede). Nullable: cliente todavía sin sede, o administrador_plataforma (ve las 20).';
+  'Negocio activo en esta sesión cuando es resoluble (login de profesional/dueno_sede). Nullable: cliente todavía sin negocio, o administrador_plataforma (ve todos).';
 comment on column public.sesiones.nivel_autenticacion is
   'Equivalente simplificado al aal (assurance level) de Supabase: aal1 sin MFA, aal2 con un factor MFA verificado en esta sesión. La lógica que lo eleva de aal1 a aal2 no está implementada todavía (depende de factores_autenticacion/retos_autenticacion).';
 
@@ -615,13 +615,13 @@ alter table public.tokens_autenticacion enable row level security;
 
 -- ============================================================================
 -- 6. auditoria_autenticacion: equivalente a auth.audit_log_entries. Importante para el caso
---    de dispositivo compartido en barbero/dueno_sede (auth-users.md).
+--    de dispositivo compartido en profesional/dueno_sede (auth-users.md).
 -- ============================================================================
 
 create table public.auditoria_autenticacion (
   id         uuid primary key default gen_random_uuid(),
   usuario_id uuid null references auth.users(id) on delete set null, -- null permitido: p.ej. login_fallido con un correo que no corresponde a ninguna cuenta -- y justamente por eso NO se debe inferir/crear un usuario_id ahí (reintroduciría la fuga de enumeración de usuarios)
-  tenant_id  uuid null references public.barberias(id) on delete set null, -- contexto de sede si es resoluble, mismo criterio que sesiones.tenant_id
+  tenant_id  uuid null references public.negocios(id) on delete set null, -- contexto de sede si es resoluble, mismo criterio que sesiones.tenant_id
   evento     text not null check (evento in ('login', 'logout', 'login_fallido', 'contrasena_cambiada', 'contrasena_recuperada', 'bloqueo_aplicado', 'bloqueo_removido', 'mfa_activado', 'mfa_desactivado', 'correo_cambiado')),
   ip         inet,
   user_agent text,
@@ -630,7 +630,7 @@ create table public.auditoria_autenticacion (
 );
 
 comment on table public.auditoria_autenticacion is
-  'Equivalente a auth.audit_log_entries. Registra eventos de auth (login/logout/fallidos/cambios de contraseña/bloqueo/MFA) para auditoría -- clave para detectar mal uso de un dispositivo compartido en barbero/dueno_sede. Solo la escribe el backend (service_role); no hay política de INSERT/UPDATE/DELETE para PostgREST a propósito.';
+  'Equivalente a auth.audit_log_entries. Registra eventos de auth (login/logout/fallidos/cambios de contraseña/bloqueo/MFA) para auditoría -- clave para detectar mal uso de un dispositivo compartido en profesional/dueno_sede. Solo la escribe el backend (service_role); no hay política de INSERT/UPDATE/DELETE para PostgREST a propósito.';
 comment on column public.auditoria_autenticacion.usuario_id is
   'Nullable a propósito: un login_fallido contra un correo inexistente no debe inventar ni resolver un usuario_id (evita reintroducir enumeración de usuarios vía la auditoría misma).';
 

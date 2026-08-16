@@ -16,7 +16,7 @@
 
 create table public.niveles_membresia (
   id              uuid primary key default gen_random_uuid(),
-  tenant_id       uuid not null references public.barberias(id) on delete cascade,
+  tenant_id       uuid not null references public.negocios(id) on delete cascade,
   nombre          text not null,
   visitas_minimas integer not null,
   dias_ventana    integer, -- null = histórico total (comportamiento actual del trigger)
@@ -43,7 +43,7 @@ create trigger trg_niveles_membresia_updated_at
 
 create table public.membresias_cliente (
   id                    uuid primary key default gen_random_uuid(),
-  tenant_id             uuid not null references public.barberias(id) on delete cascade,
+  tenant_id             uuid not null references public.negocios(id) on delete cascade,
   cliente_id            uuid not null,
   nivel_actual_id       uuid null,
   estado                text not null default 'activa' check (estado in ('activa', 'vencida', 'cancelada')),
@@ -79,7 +79,7 @@ create trigger trg_membresias_cliente_updated_at
 -- Histórico de cambios de nivel, útil para auditar por qué un cliente subió/bajó de nivel.
 create table public.historial_nivel_membresia_cliente (
   id                        uuid primary key default gen_random_uuid(),
-  tenant_id                 uuid not null references public.barberias(id) on delete cascade,
+  tenant_id                 uuid not null references public.negocios(id) on delete cascade,
   cliente_id                uuid not null,
   nivel_anterior_id         uuid null,
   nivel_nuevo_id            uuid null,

@@ -11,8 +11,10 @@
 
 ## Qué es Barberus
 
-SaaS multi-tenant para una cadena de barberías (20 sedes de un mismo grupo). Cada sede
-(tenant) es una fila en `barberias`; todo el resto del dominio —barberos, servicios,
+SaaS multi-tenant que actúa como intermediario entre múltiples negocios independientes
+(barberías, salones de uñas y otros verticales de servicios con cita/turno) y sus clientes
+— la plataforma no es dueña de esos negocios, cada uno es un tenant propio. Cada negocio
+(tenant) es una fila en `negocios`; todo el resto del dominio —profesionales, servicios,
 clientes, reservas, fila de espera, membresías— cuelga de un `tenant_id`. North star:
 reducir no-shows y tiempo de espera en fila.
 
@@ -20,20 +22,20 @@ reducir no-shows y tiempo de espera en fila.
 
 ### Tenant raíz
 
-`barberias` es el tenant raíz (`supabase/migrations/002_barberias.sql`). Toda tabla de
-dominio lleva `tenant_id not null references barberias(id)`.
+`negocios` es el tenant raíz (`supabase/migrations/002_negocios.sql`). Toda tabla de
+dominio lleva `tenant_id not null references negocios(id)`.
 
 ### Roles: `roles_usuario`
 
 `roles_usuario` (`001_extensiones_y_helpers.sql`) mapea `auth.users` a un rol dentro de un
 tenant: `(usuario_id, tenant_id, rol)`, con `rol` del enum `rol_app`:
-`administrador_plataforma`, `dueno_sede`, `barbero`, `cliente`.
+`administrador_plataforma`, `dueno_sede`, `profesional`, `cliente`.
 
 Un mismo `usuario_id` **puede tener varias filas** en `roles_usuario` (una por tenant) —
 por ejemplo, `dueno_sede` en la sede A y `cliente` en la sede B. Esto es una decisión de
 negocio explícita, no un caso raro: el único constraint es
 `unique (usuario_id, tenant_id)`, nunca `unique (usuario_id)` a secas.
-`administrador_plataforma` es la excepción: no lleva `tenant_id` (ve las 20 sedes), forzado
+`administrador_plataforma` es la excepción: no lleva `tenant_id` (ve todos los negocios), forzado
 por el constraint `roles_usuario_tenant_requerido_salvo_administrador_plataforma`.
 
 ### Cómo se resuelve el aislamiento: funciones helper parametrizadas, no un "tenant actual" global
@@ -47,9 +49,9 @@ la fila que esa política está evaluando. Las funciones, definidas en
 
 | Función | Pregunta que responde |
 |---|---|
-| `es_administrador_plataforma()` | ¿el usuario autenticado es operador de plataforma (ve las 20 sedes)? |
-| `es_miembro_del_tenant(p_tenant_id)` | ¿tiene cualquier rol (`dueno_sede`, `barbero` o `cliente`) en ese tenant? |
-| `es_personal_del_tenant(p_tenant_id)` | ¿es `dueno_sede` o `barbero` de ese tenant? |
+| `es_administrador_plataforma()` | ¿el usuario autenticado es operador de plataforma (ve todos los negocios)? |
+| `es_miembro_del_tenant(p_tenant_id)` | ¿tiene cualquier rol (`dueno_sede`, `profesional` o `cliente`) en ese tenant? |
+| `es_personal_del_tenant(p_tenant_id)` | ¿es `dueno_sede` o `profesional` de ese tenant? |
 | `es_dueno_del_tenant(p_tenant_id)` | ¿es `dueno_sede` de ese tenant? |
 | `es_cliente_del_tenant(p_tenant_id)` | ¿tiene una fila en `roles_usuario` con `rol='cliente'` en ese tenant? |
 | `es_dueno_del_cliente(p_cliente_id)` | ¿es el cliente `p_cliente_id` (usuario propio + rol `cliente` vigente)? |
@@ -88,7 +90,7 @@ create policy reservas_select on public.reservas
 
 ### Defensa en profundidad: FKs compuestas
 
-Además de RLS, las tablas que referencian `clientes`, `barberos`, `servicios`,
+Además de RLS, las tablas que referencian `clientes`, `profesionales`, `servicios`,
 `reservas` o `niveles_membresia` lo hacen con **FK compuesta `(id, tenant_id)`** (habilitada
 por un `unique (id, tenant_id)` en la tabla referenciada). Esto hace que, a nivel de motor
 de base de datos, sea imposible que por ejemplo una reserva tenga un `cliente_id` de un
@@ -97,14 +99,14 @@ lo que permite simplificar policies como `es_dueno_del_cliente(cliente_id)` sin 
 chequeo de `tenant_id`: si no coincidieran, el INSERT ya habría fallado por la FK antes de
 llegar a evaluarse la policy.
 
-## Las 20 tablas
+## Las tablas
 
 Todas con RLS habilitado. Migración de origen entre paréntesis.
 
 **Identidad y catálogo**
 - `roles_usuario` (`001`) — mapa `usuario_id` → `(tenant_id, rol)`. Base de todo el RLS.
-- `barberias` (`002`) — tenant raíz: nombre, `slug` único, zona horaria, contacto.
-- `barberos` (`003`) — 1:1 con una sede (`tenant_id` normal, sin tabla de rotación —
+- `negocios` (`002`) — tenant raíz: nombre, `slug` único, zona horaria, contacto.
+- `profesionales` (`003`) — 1:1 con una sede (`tenant_id` normal, sin tabla de rotación —
   decisión de negocio ya cerrada). `usuario_id` nullable (puede no tener login todavía).
 - `servicios` (`004`) — catálogo por sede: nombre, `duracion_minutos`. Sin precio/billing
   (fuera de alcance).
@@ -113,14 +115,14 @@ Todas con RLS habilitado. Migración de origen entre paréntesis.
 - `clientes` (`005`) — perfil **aislado por sede**: un mismo humano que visita 2 sedes
   tiene 2 filas independientes, sin FK entre ellas. `usuario_id` nullable (walk-ins sin
   cuenta). Único por `(tenant_id, usuario_id)`, nunca por `usuario_id` global.
-- `notas_cliente` (`005`) — notas internas del barbero sobre un cliente; nunca visibles
+- `notas_cliente` (`005`) — notas internas del profesional sobre un cliente; nunca visibles
   para el propio cliente (solo policies de `es_personal_del_tenant`).
 
 **Reservas**
-- `reservas` (`006`) — agenda: `cliente_id`, `barbero_id`, `estado`
+- `reservas` (`006`) — agenda: `cliente_id`, `profesional_id`, `estado`
   (`pendiente`→`confirmada`→`en_progreso`→`completada`, o `cancelada`/`no_asistio` según
   máquina de estados en trigger), `inicio_programado`/`fin_programado`. No-doble-booking de
-  un barbero garantizado por un `exclude using gist` (constraint de exclusión), no un
+  un profesional garantizado por un `exclude using gist` (constraint de exclusión), no un
   trigger — atómico bajo concurrencia real, `deferrable initially deferred` porque
   `fin_programado` se recalcula al insertar los servicios de la reserva en la misma
   transacción.
@@ -133,7 +135,7 @@ Todas con RLS habilitado. Migración de origen entre paréntesis.
 **Fila en vivo**
 - `turnos_fila` (`007`) — check-in físico en sede, con o sin reserva previa
   (`reserva_id` nullable). `estado`: `esperando`→`llamado`→`en_servicio`→`completado`, o
-  `cancelado`/`no_asistio`. Un barbero solo puede tener un turno `en_servicio` a la vez
+  `cancelado`/`no_asistio`. Un profesional solo puede tener un turno `en_servicio` a la vez
   (unique index parcial). `numero_turno` se asigna de forma atómica por trigger.
 - `contadores_fila_diarios` (`007`) — contador `(tenant_id, fecha_fila) → último número`,
   usado internamente por el trigger de numeración; no se toca directamente desde la app.
@@ -179,9 +181,9 @@ una fila de rol, y para quién:
   hace `INSERT roles_usuario` seguido de `INSERT clientes` en la misma transacción — en ese
   orden, porque `clientes_insert` exige `es_cliente_del_tenant(tenant_id)`, que lee
   `roles_usuario`).
-- **Staff de la sede** (`dueno_sede` o `barbero`) puede registrar la cuenta `cliente` de un
+- **Staff de la sede** (`dueno_sede` o `profesional`) puede registrar la cuenta `cliente` de un
   walk-in.
-- **Solo `dueno_sede`** da de alta un `barbero` en su propia sede.
+- **Solo `dueno_sede`** da de alta un `profesional` en su propia sede.
 - **Solo `administrador_plataforma`** da de alta un `dueno_sede` o a otro
   `administrador_plataforma` — cierra el vector de escalamiento de privilegios más obvio de
   esta tabla.
@@ -199,17 +201,17 @@ sensible. No aplica a staff ni a `service_role`.
 Decisión de producto: replicar, en español y adaptado al negocio, la riqueza del esquema
 `auth.*` que Supabase mantiene internamente — estructura lista para crecer (MFA,
 identidades vinculadas) aunque esa lógica todavía no esté implementada. **Explícitamente
-fuera de alcance: SSO/SAML empresarial** (no aplica a un negocio de barberías con clientes y
-dueños individuales).
+fuera de alcance: SSO/SAML empresarial** (no aplica a una plataforma de negocios
+independientes con clientes y dueños individuales).
 
 | Tabla nueva | Equivalente en `auth.*` de Supabase | Qué es |
 |---|---|---|
-| `perfiles_usuario` | `auth.users` (enriquecido) | 1:1 con `auth.users`, legible desde RLS (a diferencia de `auth.users`). `correo_verificado`/`telefono_verificado`/`ultimo_login_at` se sincronizan por trigger; `bloqueado_hasta` (bloqueo GLOBAL, las 20 sedes) y `eliminado_at` (soft-delete de la cuenta) son exclusivos de `administrador_plataforma` — el bloqueo POR SEDE que un `dueno_sede` sí puede aplicar usa `clientes.activo`/`barberos.activo`, ya existentes; `metadata_app` solo sistema; `metadata_usuario` el propio usuario. Transversal a los 4 roles — incluye `dueno_sede`/`administrador_plataforma`, que no tienen fila en `clientes` ni `barberos`. |
+| `perfiles_usuario` | `auth.users` (enriquecido) | 1:1 con `auth.users`, legible desde RLS (a diferencia de `auth.users`). `correo_verificado`/`telefono_verificado`/`ultimo_login_at` se sincronizan por trigger; `bloqueado_hasta` (bloqueo GLOBAL, todos los negocios) y `eliminado_at` (soft-delete de la cuenta) son exclusivos de `administrador_plataforma` — el bloqueo POR SEDE que un `dueno_sede` sí puede aplicar usa `clientes.activo`/`profesionales.activo`, ya existentes; `metadata_app` solo sistema; `metadata_usuario` el propio usuario. Transversal a los 4 roles — incluye `dueno_sede`/`administrador_plataforma`, que no tienen fila en `clientes` ni `profesionales`. |
 | `identidades_usuario` | `auth.identities` | Un registro por método de login vinculado (hoy `correo`/`telefono`; estructura lista para `google`/`apple` a futuro — sin lógica OAuth todavía). |
 | `sesiones` | `auth.sessions` | Metadata de aplicación (dispositivo, IP, `nivel_autenticacion` tipo `aal1`/`aal2`/`aal3`, `expira_at`). No reemplaza el JWT — Supabase/PostgREST lo sigue validando en cada request; esta tabla es para UX ("tus dispositivos"/cerrar sesión remota) y para que el backend aplique el timeout diferenciado por rol (ver abajo). |
 | `factores_autenticacion` + `retos_autenticacion` | `auth.mfa_factors` + `auth.mfa_challenges` | MFA-ready (`totp`/`telefono`/`webauthn`); sin lógica de verificación todavía. `secreto` es un placeholder que debe cifrarse en reposo antes de usarse con datos reales. |
 | `tokens_autenticacion` | `auth.one_time_tokens` | Patrón genérico de token de un solo uso por `tipo`. **No reemplaza** recuperación de contraseña/confirmación de correo de la cuenta (eso sigue el flujo nativo de GoTrue) — es para flujos que Supabase Auth no cubre de fábrica. Sin políticas RLS: solo `service_role` (backend) la toca. |
-| `auditoria_autenticacion` | `auth.audit_log_entries` | Eventos de auth (`login`/`logout`/`login_fallido`/cambios de contraseña/bloqueo/MFA) — clave para detectar mal uso de un dispositivo compartido en `barbero`/`dueno_sede`. Solo lectura vía RLS; solo `service_role` escribe. |
+| `auditoria_autenticacion` | `auth.audit_log_entries` | Eventos de auth (`login`/`logout`/`login_fallido`/cambios de contraseña/bloqueo/MFA) — clave para detectar mal uso de un dispositivo compartido en `profesional`/`dueno_sede`. Solo lectura vía RLS; solo `service_role` escribe. |
 
 `auth.refresh_tokens` y `auth.mfa_amr_claims` **no** se replican: el primero porque Supabase
 Auth ya lo gestiona por completo (replicarlo sería el antipatrón de reinventar
@@ -219,7 +221,7 @@ alcanzado, no el detalle de cada claim.
 
 `sesiones`/`auditoria_autenticacion` llevan `tenant_id` **nullable** (a diferencia de las
 tablas de dominio, donde es obligatorio): representa el contexto de sede activo cuando es
-resoluble (login de `barbero`/`dueno_sede` de una sede concreta), y es `null` para un
+resoluble (login de `profesional`/`dueno_sede` de una sede concreta), y es `null` para un
 `cliente` sin sede aún o para `administrador_plataforma`. Sus policies de `SELECT` dejan que
 un `dueno_sede` audite solo eventos/sesiones con el `tenant_id` de su propia sede
 (`es_propio_o_dueno_del_tenant_opcional`, ver abajo). `sesiones_insert` además valida que,
@@ -234,7 +236,7 @@ revisión de guardianes"):
 
 1. Un `EXISTS` inline contra `roles_usuario` dentro de la policy de OTRA tabla queda sujeto a
    `roles_usuario_select_propio` (`usuario_id = auth.uid()`) — un `dueno_sede` consultando
-   así las filas de `roles_usuario` de su barbero ve **cero filas siempre**, así que el
+   así las filas de `roles_usuario` de su profesional ve **cero filas siempre**, así que el
    `EXISTS` da falso incluso cuando debería poder. Se agregaron funciones `SECURITY DEFINER`
    para esto (mismo patrón que el resto del esquema):
    `es_personal_de_algun_tenant_del_usuario(p_usuario_id)`,
@@ -262,12 +264,12 @@ revisión de guardianes"):
    negocios competidores.** `roles_usuario_insert` (`009`) deja que cualquier staff de un
    tenant registre `roles_usuario(usuario_id = <cualquier uuid existente>, tenant_id = mi
    tenant, rol = 'cliente')` sin exigir `usuario_id = auth.uid()`. Con eso, un `dueno_sede`
-   de la sede A podía "atar" como cliente suyo al `dueno_sede`/`barbero` de la sede B (solo
+   de la sede A podía "atar" como cliente suyo al `dueno_sede`/`profesional` de la sede B (solo
    con su `usuario_id`/correo) y luego usar `bloqueado_hasta` — que bloquea la cuenta en las
-   20 sedes, no por tenant — para sacarlo de operar en TODA la plataforma. Corregido
+   todos los negocios, no por tenant — para sacarlo de operar en TODA la plataforma. Corregido
    sumando `bloqueado_hasta` a la regla de `eliminado_at`: **siempre**
    `administrador_plataforma`. El bloqueo POR SEDE que un `dueno_sede` sí debe poder hacer
-   ya existía con el alcance correcto: `clientes.activo`/`barberos.activo`
+   ya existía con el alcance correcto: `clientes.activo`/`profesionales.activo`
    (`003`/`005`, tenant-scoped) — no hizo falta tabla ni columna nueva.
 6. **Regresión funcional del fix del punto 3** — la protección incondicional de
    `eliminado_at` también bloqueaba a `trg_sincronizar_perfil_usuario` (corre sin contexto de
@@ -283,7 +285,7 @@ prohibiciones conocidas — mezclar esas preguntas, y proteger por nombre en vez
 default, fue la causa raíz de los puntos 2, 3, 4 y 5. `bloqueado_hasta` terminó con el mismo
 tratamiento que `eliminado_at` (siempre `administrador_plataforma`) precisamente porque su
 efecto es global, no de sede — el bloqueo con alcance de tenant vive en las columnas
-`activo` de `clientes`/`barberos`, no en el perfil transversal.
+`activo` de `clientes`/`profesionales`, no en el perfil transversal.
 
 **Riesgo residual aceptado explícitamente** (no cerrado, documentado a propósito): un
 `dueno_sede` con una relación trivial (`cliente` creado unilateralmente por staff, sin
@@ -291,7 +293,7 @@ efecto es global, no de sede — el bloqueo con alcance de tenant vive en las co
 escribir `correo_verificado`/`telefono_verificado` de alguien de otra sede — 2 columnas de
 estado, no destructivas, que no bloquean operar. Se evaluó cerrar esto restringiendo
 `roles_usuario_insert` para que staff no pueda atar como `cliente` walk-in a un `usuario_id`
-que ya tiene rol `dueno_sede`/`administrador_plataforma`/`barbero` en cualquier tenant — se
+que ya tiene rol `dueno_sede`/`administrador_plataforma`/`profesional` en cualquier tenant — se
 descartó por ahora porque el impacto real ya quedó acotado con los puntos 4 y 5; queda
 como candidato a revisar si un guardián futuro lo considera insuficiente.
 
@@ -299,22 +301,22 @@ como candidato a revisar si un guardián futuro lo considera insuficiente.
 `perfiles_usuario_select`): como `perfiles_usuario` no tiene `tenant_id` propio, el `SELECT`
 de `correo_verificado`/`telefono_verificado`/`ultimo_login_at` de un usuario **es visible
 para cualquier sede con la que tenga alguna relación** en `roles_usuario`, aunque el evento
-haya ocurrido en el contexto de otra sede — y las 20 barberías son negocios independientes
-entre sí (potenciales competidores), no sub-sedes de un mismo tenant. Se acepta porque son
+haya ocurrido en el contexto de otra sede — y los negocios de la plataforma son
+independientes entre sí (potenciales competidores), no sub-sedes de un mismo tenant. Se acepta porque son
 solo 3 campos de estado operativo (no `identidades_usuario`/`factores_autenticacion`, que sí
 son estrictamente self+admin) y porque el caso de uso real (un `dueno_sede` necesita saber
-si su barbero verificó su cuenta) lo requiere.
+si su profesional verificó su cuenta) lo requiere.
 
 ### Política de sesión/inactividad por rol — decisión de diseño, no tabla
 
-`barbero`/`dueno_sede` (dispositivo compartido en el local) necesitan expiración más corta y
+`profesional`/`dueno_sede` (dispositivo compartido en el local) necesitan expiración más corta y
 logout por inactividad; `cliente`, sesión normal. GoTrue configura el JWT/refresh token a
 nivel de **proyecto**, no por rol, así que la diferenciación real es de app: un timer de
 inactividad en frontend-nextjs que cierra sesión tras ~15 min sin interacción SOLO cuando el
-rol activo es `barbero`/`dueno_sede` (leyendo `roles_usuario`, igual que cualquier otra
+rol activo es `profesional`/`dueno_sede` (leyendo `roles_usuario`, igual que cualquier otra
 decisión de autorización), apoyado en `sesiones.expira_at`/`ultima_actividad_at`. No se
 modeló como una escritura a la base en cada request: sería una escritura por request a la
-escala de las 20 sedes.
+escala de todos los negocios de la plataforma.
 
 ### Recuperación de contraseña y enumeración de usuarios — Supabase Auth nativo
 
@@ -366,7 +368,7 @@ cualquier `tenant_id` solicitado, incluida ausencia de uno (contexto de platafor
 
 **Timeout de sesión diferenciado por rol.** El mismo caso de uso aplica la política ya
 documentada arriba ("Política de sesión/inactividad por rol"): timeout corto (15 min)
-para `barbero`/`dueno_sede` (dispositivo compartido en el local), normal (8 h) para
+para `profesional`/`dueno_sede` (dispositivo compartido en el local), normal (8 h) para
 `cliente`/`administrador_plataforma`, comparando contra `sesiones.expira_at` -- lógica de
 dominio pura en `contextos/identidad/dominio/servicios.py`, sin escritura a la base en
 cada request (se lee `sesiones`, no se actualiza en cada llamada).
@@ -379,14 +381,14 @@ frontend verifiquen esta capa contra un Supabase real.
 
 **Base de datos (implementado, verificado):**
 
-1. `INSERT` en `reservas` con `cliente_id`, `barbero_id`, `inicio_programado` y un
+1. `INSERT` en `reservas` con `cliente_id`, `profesional_id`, `inicio_programado` y un
    `fin_programado` tentativo (el `check` `fin_programado > inicio_programado` no es
    diferible; hace falta un valor válido inicial, p.ej. `inicio + 1 minuto`).
 2. `INSERT` en `reserva_servicios` por cada servicio elegido, en la misma transacción. Un
    trigger fija `duracion_minutos_snapshot` desde `servicios.duracion_minutos` si no viene
    explícito, y otro recalcula `reservas.fin_programado` sumando esas duraciones.
 3. Al hacer `COMMIT`, el exclusion constraint `reservas_sin_doble_reserva` valida (recién
-   ahí, por ser `deferred`) que el barbero no tenga otra reserva activa con rango
+   ahí, por ser `deferred`) que el profesional no tenga otra reserva activa con rango
    solapado; si lo hay, la transacción falla completa.
 4. Cambios de `estado` pasan por el trigger `validar_transicion_estado_reserva`: valida la
    transición contra la máquina de estados y, si quien actualiza no es staff del tenant de
@@ -400,7 +402,7 @@ frontend verifiquen esta capa contra un Supabase real.
 configuración de los agentes de este repo, la reserva se crearía desde un formulario
 Next.js (`react-hook-form` + `zod`), un endpoint FastAPI del contexto `agenda` validaría
 y ejecutaría la transacción de arriba, y la fila en vivo (`turnos_fila`) se
-sincronizaría entre barbero y cliente vía Supabase Realtime. Hoy existe el scaffolding de
+sincronizaría entre profesional y cliente vía Supabase Realtime. Hoy existe el scaffolding de
 `api/` y el contexto `identidad` (resolución de JWT/rol/tenant, ver sección "Backend
 (API)" más abajo), pero el contexto `agenda` en sí es solo esqueleto de carpetas, sin
 endpoints ni lógica — no hay `frontend/` en el repo tampoco. Este párrafo sigue
@@ -416,9 +418,9 @@ describiendo mayormente el plan, no el comportamiento actual del flujo de reserv
   tienen columnas de precio ni ciclo de facturación; la renovación es manual y ocurre fuera
   del sistema (`fin_periodo_actual` es una fecha que el `dueno_sede` escribe a mano). Pagos
   quedan fuera de alcance por ahora. Ver `008_membresias.sql`.
-- **Barbero pertenece a una sola sede.** Modelado como columna `tenant_id` normal en
-  `barberos` (no una tabla N:N de rotación entre sedes) — decisión de negocio ya cerrada,
-  no una limitación técnica temporal. Ver `003_barberos.sql`.
+- **Profesional pertenece a una sola sede.** Modelado como columna `tenant_id` normal en
+  `profesionales` (no una tabla N:N de rotación entre sedes) — decisión de negocio ya cerrada,
+  no una limitación técnica temporal. Ver `003_profesionales.sql`.
 - **Fuera de alcance explícito en este esquema:** pagos/facturación, guías visuales de
   resultado (referencias de cortes), notificaciones WhatsApp/SMS.
 

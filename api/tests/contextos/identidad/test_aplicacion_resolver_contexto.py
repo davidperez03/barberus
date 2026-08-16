@@ -147,7 +147,7 @@ def test_incluye_sesion_vigente_cuando_se_pide_sesion_id() -> None:
     caso_de_uso = ResolverContextoIdentidad(
         validador_token=ValidadorTokenFake(datos_token=_datos_token()),
         repositorio_roles=RepositorioRolesFake(
-            {USUARIO_ID: [AsignacionRol(tenant_id=TENANT_A, rol=Rol.BARBERO)]}
+            {USUARIO_ID: [AsignacionRol(tenant_id=TENANT_A, rol=Rol.PROFESIONAL)]}
         ),
         repositorio_sesiones=RepositorioSesionesFake({"sesion-1": sesion}),
     )

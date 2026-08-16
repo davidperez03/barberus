@@ -39,7 +39,7 @@ api/
 └── tests/
 ```
 
-Un contexto **no importa el `dominio/` ni `infraestructura/` interno de otro contexto**. Si `agenda` necesita algo de `identidad` (ej. validar que un usuario es barbero activo), lo pide a través del caso de uso/puerto público de `identidad`, nunca importando sus entidades internas directamente.
+Un contexto **no importa el `dominio/` ni `infraestructura/` interno de otro contexto**. Si `agenda` necesita algo de `identidad` (ej. validar que un usuario es profesional activo), lo pide a través del caso de uso/puerto público de `identidad`, nunca importando sus entidades internas directamente.
 
 ## Reglas de agregados
 

@@ -4,7 +4,7 @@ Concentra las dos reglas de negocio de este contexto que NO son responsabilidad 
 caso de uso ni de un adaptador:
   1. Cuál (tenant_id, rol) aplica a una request cuando un usuario tiene roles en varios
      tenants (sedes son negocios independientes y competidores).
-  2. Cuánto dura una sesión según el rol activo (timeout corto para barbero/dueno_sede,
+  2. Cuánto dura una sesión según el rol activo (timeout corto para profesional/dueno_sede,
      dispositivo compartido en el local -- ver `docs/ARCHITECTURE.md`, sección "Política
      de sesión/inactividad por rol").
 """
@@ -22,13 +22,13 @@ from contextos.identidad.dominio.excepciones import (
 )
 from contextos.identidad.dominio.objetos_valor import AsignacionRol, Rol, RolActivo, Sesion
 
-# Timeout corto: barbero/dueno_sede operan en un dispositivo compartido del local (ver
+# Timeout corto: profesional/dueno_sede operan en un dispositivo compartido del local (ver
 # docs/ARCHITECTURE.md). Timeout normal: cliente y administrador_plataforma (no comparten
 # dispositivo en el mismo sentido operativo).
 _TIMEOUT_ROLES_DISPOSITIVO_COMPARTIDO = timedelta(minutes=15)
 _TIMEOUT_ROLES_NORMAL = timedelta(hours=8)
 
-_ROLES_DISPOSITIVO_COMPARTIDO = frozenset({Rol.BARBERO, Rol.DUENO_SEDE})
+_ROLES_DISPOSITIVO_COMPARTIDO = frozenset({Rol.PROFESIONAL, Rol.DUENO_SEDE})
 
 
 def resolver_rol_activo(

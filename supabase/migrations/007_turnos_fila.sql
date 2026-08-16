@@ -8,18 +8,18 @@
 -- Decisiones no triviales:
 -- 1. numero_turno se genera de forma atómica por (tenant_id, fecha) vía tabla contador
 --    con `for update` (evita colisión de número de turno bajo check-ins concurrentes).
--- 2. Un barbero solo puede tener UN turno 'en_servicio' a la vez: unique index parcial,
+-- 2. Un profesional solo puede tener UN turno 'en_servicio' a la vez: unique index parcial,
 --    no un simple trigger (misma razón que el exclude constraint de reservas: atomicidad
 --    real bajo concurrencia).
 -- 3. Transición de estados validada en trigger: esperando -> llamado -> en_servicio ->
 --    completado, con salidas a cancelado/no_asistio solo desde esperando/llamado.
--- 4. cliente_id/barbero_id/reserva_id llevan FK compuesta (id, tenant_id): la misma
+-- 4. cliente_id/profesional_id/reserva_id llevan FK compuesta (id, tenant_id): la misma
 --    garantía de "no mezclar tenants" que en reservas, por eso las policies de autoservicio
 --    del cliente pueden usar es_dueno_del_cliente(cliente_id) sin repetir el chequeo de
 --    tenant_id (ver nota equivalente en 006_reservas.sql).
 
 create table public.contadores_fila_diarios (
-  tenant_id           uuid not null references public.barberias(id) on delete cascade,
+  tenant_id           uuid not null references public.negocios(id) on delete cascade,
   fecha_fila          date not null,
   ultimo_numero_turno integer not null default 0,
   primary key (tenant_id, fecha_fila)
@@ -30,10 +30,10 @@ comment on table public.contadores_fila_diarios is
 
 create table public.turnos_fila (
   id            uuid primary key default gen_random_uuid(),
-  tenant_id     uuid not null references public.barberias(id) on delete cascade,
+  tenant_id     uuid not null references public.negocios(id) on delete cascade,
   reserva_id    uuid null,
   cliente_id    uuid not null,
-  barbero_id    uuid null,
+  profesional_id    uuid null,
   estado        text not null default 'esperando'
                    check (estado in ('esperando','llamado','en_servicio','completado','cancelado','no_asistio')),
   fecha_fila       date not null default current_date,
@@ -49,8 +49,8 @@ create table public.turnos_fila (
     references public.reservas(id, tenant_id) on delete set null,
   constraint turnos_fila_cliente_tenant_fkey foreign key (cliente_id, tenant_id)
     references public.clientes(id, tenant_id) on delete restrict,
-  constraint turnos_fila_barbero_tenant_fkey foreign key (barbero_id, tenant_id)
-    references public.barberos(id, tenant_id) on delete restrict,
+  constraint turnos_fila_profesional_tenant_fkey foreign key (profesional_id, tenant_id)
+    references public.profesionales(id, tenant_id) on delete restrict,
   constraint turnos_fila_numero_turno_unico unique (tenant_id, fecha_fila, numero_turno)
 );
 
@@ -58,11 +58,11 @@ comment on table public.turnos_fila is
   'Fila en vivo de una sede: check-in físico, con o sin reserva previa (reserva_id nullable).';
 
 create index idx_turnos_fila_tenant_fecha_estado on public.turnos_fila (tenant_id, fecha_fila, estado);
-create index idx_turnos_fila_barbero on public.turnos_fila (barbero_id) where barbero_id is not null;
+create index idx_turnos_fila_profesional on public.turnos_fila (profesional_id) where profesional_id is not null;
 
--- Un barbero atiende UN turno a la vez.
-create unique index idx_turnos_fila_un_en_servicio_por_barbero
-  on public.turnos_fila (barbero_id)
+-- Un profesional atiende UN turno a la vez.
+create unique index idx_turnos_fila_un_en_servicio_por_profesional
+  on public.turnos_fila (profesional_id)
   where estado = 'en_servicio';
 
 create trigger trg_turnos_fila_updated_at
@@ -121,8 +121,8 @@ begin
     raise exception 'Transición de estado inválida en turno_fila %: % -> %', old.id, old.estado, new.estado;
   end if;
 
-  if new.estado = 'llamado' and new.barbero_id is null then
-    raise exception 'No se puede llamar un turno sin barbero asignado (turno_fila %)', old.id;
+  if new.estado = 'llamado' and new.profesional_id is null then
+    raise exception 'No se puede llamar un turno sin profesional asignado (turno_fila %)', old.id;
   end if;
 
   -- Igual que en reservas: el cliente solo puede cancelar su propio turno, nunca
