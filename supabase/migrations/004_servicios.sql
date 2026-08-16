@@ -7,7 +7,7 @@
 
 create table public.servicios (
   id                uuid primary key default gen_random_uuid(),
-  tenant_id         uuid not null references public.barberias(id) on delete cascade,
+  tenant_id         uuid not null references public.negocios(id) on delete cascade,
   nombre            text not null,
   descripcion       text,
   duracion_minutos  integer not null,

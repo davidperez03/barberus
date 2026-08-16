@@ -57,7 +57,7 @@ Descripción en minúscula, imperativo, sin punto final. Scope entre paréntesis
 1. `npm run build` — debe compilar
 2. `npm run lint` — sin errores
 3. `npm run test` — si existen tests
-4. Invocar al agente `multi-tenant-guard` — audita aislamiento entre las 20 barberías en queries, RLS y endpoints nuevos
+4. Invocar al agente `multi-tenant-guard` — audita aislamiento entre los negocios asociados en queries, RLS y endpoints nuevos
 5. Invocar al agente `dry-guard` — audita duplicidad de código en todo el stack (frontend, backend, DB)
 6. Invocar al agente `lang-guard` — audita que el dominio del negocio esté en español (tablas, columnas, endpoints, tipos, componentes), salvo convenciones técnicas universales
 7. Ningún commit directo a `main` ni `develop`
