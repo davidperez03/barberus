@@ -1,36 +1,43 @@
 # Barberus
 
-Barberus es un SaaS multi-tenant para cadenas de barberías (pensado para 20 sedes de un
-mismo grupo). Cada barbería administra su propia agenda, catálogo de servicios, barberos,
-clientes y fila de espera en vivo, aislada del resto de sedes.
+Barberus es una plataforma multi-tenant que actúa como **intermediaria entre múltiples
+negocios independientes** (barberías, salones de uñas y otros verticales de servicios de
+belleza/cuidado personal con cita o turno) **y sus clientes**. No es dueña de "sedes" de
+una sola marca: cada negocio que se registra es su propio tenant, con su propia agenda,
+catálogo de servicios, profesionales, clientes y fila de espera en vivo, aislado del resto
+de negocios de la plataforma.
 
 North star del producto: reducir los no-shows y el tiempo de espera en fila.
 
 ## Estado actual del proyecto
 
-**Existen el esquema de base de datos, el scaffolding del backend y el scaffolding del
-frontend (con el contexto `identidad` end-to-end).** Lo que sí existe y está completo:
+**Existen el esquema de base de datos aplicado a un proyecto Supabase real, el scaffolding
+del backend y el scaffolding del frontend (con el contexto `identidad` end-to-end,
+incluido registro/login).** Lo que sí existe y está completo:
 
 - `supabase/migrations/`: 10 migraciones SQL (`001` a `010`) que definen 20 tablas —
-  13 de dominio (barberías, barberos, servicios, clientes, reservas, fila, membresías) y
-  7 de identidad/auth extendida (perfil de usuario, identidades vinculadas, sesiones,
-  MFA-ready, tokens de un solo uso, auditoría) — con Row Level Security multi-tenant. Ver el
-  detalle en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+  13 de dominio (`negocios`, `profesionales`, servicios, clientes, reservas, fila,
+  membresías) y 7 de identidad/auth extendida (perfil de usuario, identidades vinculadas,
+  sesiones, MFA-ready, tokens de un solo uso, auditoría) — con Row Level Security
+  multi-tenant. Ver el detalle en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 - `scripts/migrations/APPLIED.md`: registro de cada migración, su estado y las decisiones
   de diseño detrás de cada una.
 - `api/`: scaffolding de la API FastAPI (arquitectura hexagonal + DDD) con el contexto
-  `identidad` implementado end-to-end (resolución de JWT/rol/tenant desde Supabase Auth) y
-  el resto de contextos (`agenda`, `fila`, `membresias`, `reportes`) como esqueleto de
-  carpetas, pendientes de lógica en PRs futuros. Ver [`api/README.md`](api/README.md).
+  `identidad` implementado end-to-end: resolución de JWT/rol/tenant (validado vía JWKS
+  contra Supabase Auth, no HS256 legacy) y los endpoints `POST /identidad/registro` /
+  `POST /identidad/iniciar-sesion` como proxy a Supabase Auth (GoTrue). El resto de
+  contextos (`agenda`, `fila`, `membresias`, `reportes`) sigue como esqueleto de carpetas,
+  pendiente de lógica en PRs futuros. Ver [`api/README.md`](api/README.md).
 - `frontend/`: scaffolding de Next.js (App Router + TypeScript + Tailwind), misma
   arquitectura hexagonal + DDD por contextos que `api/`, con el contexto `identidad`
-  implementado (login/registro/resolución de contexto contra los 3 endpoints reales del
-  backend) y la landing principal. `agenda`/`fila`/`cliente`/`membresia` sin construir
-  todavía. Ver [`frontend/README.md`](frontend/README.md).
+  implementado: rutas propias `/iniciar-sesion` y `/registro` (no tabs de un mismo
+  formulario) y una landing con parallax como elemento de diseño. `agenda`/`fila`/
+  `cliente`/`membresia` sin construir todavía. Ver [`frontend/README.md`](frontend/README.md).
 
-Las migraciones están **diseñadas pero no aplicadas a ningún entorno Supabase todavía**
-(ver la columna "Estado" en `scripts/migrations/APPLIED.md`); sí fueron validadas
-corriéndolas desde cero contra un Postgres real.
+Las 10 migraciones **ya se aplicaron a un proyecto Supabase real** (vinculado vía
+`supabase link`, con `supabase db push`/`db reset --linked`) — no es solo un esquema
+diseñado contra un Postgres local efímero. Las credenciales de ese proyecto (URL, keys,
+SMTP) viven en `.env`/`api/.env`, gitignored, nunca en este README ni en el repo.
 
 ## Stack
 
@@ -39,9 +46,9 @@ El stack está definido en la configuración de los agentes de este repo
 
 | Capa | Tecnología | Estado |
 |---|---|---|
-| Base de datos | Supabase / PostgreSQL, con Row Level Security | Implementado (esquema completo, no aplicado a un entorno aún) |
-| Backend | FastAPI (Python), arquitectura hexagonal + DDD por contextos delimitados | Scaffolding + contexto `identidad` implementados (ver `api/README.md`); `agenda`/`fila`/`membresias`/`reportes` sin lógica todavía |
-| Frontend | Next.js (App Router) + TypeScript + Tailwind, arquitectura hexagonal + DDD por contextos | Scaffolding + contexto `identidad` (login/registro/landing) implementados (ver `frontend/README.md`); `agenda`/`fila`/`cliente`/`membresia` sin construir todavía |
+| Base de datos | Supabase / PostgreSQL, con Row Level Security | Implementado y aplicado a un proyecto Supabase real (esquema completo, 10 migraciones) |
+| Backend | FastAPI (Python), arquitectura hexagonal + DDD por contextos delimitados | Scaffolding + contexto `identidad` implementados (JWT vía JWKS, registro/login proxy a Supabase Auth — ver `api/README.md`); `agenda`/`fila`/`membresias`/`reportes` sin lógica todavía |
+| Frontend | Next.js (App Router) + TypeScript + Tailwind, arquitectura hexagonal + DDD por contextos | Scaffolding + contexto `identidad` (rutas `/iniciar-sesion` y `/registro`, landing con parallax) implementados (ver `frontend/README.md`); `agenda`/`fila`/`cliente`/`membresia` sin construir todavía |
 | Tiempo real (fila en vivo) | Supabase Realtime | No implementado |
 
 ## Estructura de carpetas
@@ -69,10 +76,11 @@ barberus/
 │   │   │   └── identidad/     # login/registro/contexto — ver frontend/README.md
 │   │   │       ├── dominio/         # tipos + validación (zod) puros, sin React/fetch
 │   │   │       ├── aplicacion/      # hooks de caso de uso (use-registro, use-iniciar-sesion...)
-│   │   │       ├── infraestructura/ # cliente HTTP hacia api/, almacén de sesión
-│   │   │       └── ui/               # formulario de acceso, panel de sesión
-│   │   ├── compartido/         # design tokens, componentes UI genéricos, animación
-│   │   └── app/                 # App Router — cascarón, solo compone ui/ de los contextos
+│   │   │       ├── infraestructura/ # cliente HTTP hacia api/, almacén de sesión (cookie)
+│   │   │       └── ui/               # pantalla-registro, pantalla-iniciar-sesion, panel-sesion
+│   │   ├── compartido/         # design tokens, animación (incl. parallax), UI genérica
+│   │   └── app/                 # App Router: landing + rutas /iniciar-sesion y /registro,
+│   │                             # solo compone ui/ de los contextos
 │   └── README.md
 ├── docs/
 │   └── ARCHITECTURE.md      # modelo multi-tenant, tablas, decisiones de diseño
@@ -89,28 +97,28 @@ convención de 4 capas (`dominio/aplicacion/infraestructura/interfaces` en el ba
 ## Cómo aplicar las migraciones localmente
 
 Las migraciones referencian `auth.users` (la tabla de autenticación de Supabase) desde
-varias tablas (`roles_usuario`, `barberos`, `clientes`, etc.), así que **no se pueden
+varias tablas (`roles_usuario`, `profesionales`, `clientes`, etc.), así que **no se pueden
 aplicar contra un Postgres vanilla** — necesitan un proyecto Supabase real (local o
 remoto), que es quien provee el esquema `auth`.
 
-Este repo todavía no incluye `supabase/config.toml` (el proyecto Supabase local no está
-inicializado en el repo), así que el primer paso es inicializarlo:
+Este repo **ya incluye `supabase/config.toml`** (proyecto Supabase inicializado, con la
+configuración de SMTP de producción vía variables de entorno — nunca credenciales en
+claro), y ya está vinculado a un proyecto Supabase remoto real con las 10 migraciones
+aplicadas. Para levantar un entorno local (Docker) contra ese mismo esquema:
 
 ```bash
 # 1. Instalar la Supabase CLI si no la tienes:
 #    https://supabase.com/docs/guides/cli
 
-# 2. Inicializar el proyecto Supabase local (crea supabase/config.toml)
-supabase init
-
-# 3. Levantar Postgres + Auth local vía Docker
+# 2. Levantar Postgres + Auth local vía Docker (usa supabase/config.toml ya existente)
 supabase start
 
-# 4. Aplicar las migraciones pendientes
+# 3. Aplicar las migraciones al Postgres local
 supabase migration up
 ```
 
-Para aplicar contra un proyecto Supabase remoto ya vinculado (`supabase link`):
+Para aplicar contra el proyecto Supabase remoto ya vinculado (`supabase link`, requiere
+las credenciales del proyecto real, que no viven en este repo):
 
 ```bash
 supabase db push
