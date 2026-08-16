@@ -23,7 +23,7 @@ import type { DatosSesionAuth } from "@/contextos/identidad/dominio/tipos";
 const NOMBRE_COOKIE = "barberus_sesion";
 
 /** Evento propio disparado en cada cambio de sesión, para que `ui/` reaccione sin tener
- * que hacer polling del token (ver `TarjetaIdentidad`). */
+ * que hacer polling del token (ver `SeccionAcceso`). */
 export const EVENTO_CAMBIO_SESION = "barberus:sesion-cambio";
 
 function estaEnNavegador(): boolean {

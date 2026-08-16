@@ -23,7 +23,11 @@ export interface DatosSesionAuth {
 }
 
 /** Roles posibles que puede resolver `/identidad/contexto`. */
-export type RolIdentidad = "cliente" | "barbero" | "dueno_sede" | "administrador_plataforma";
+export type RolIdentidad =
+  | "cliente"
+  | "profesional"
+  | "dueno_sede"
+  | "administrador_plataforma";
 
 export interface SesionIdentidad {
   id: string;

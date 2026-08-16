@@ -13,8 +13,8 @@ import { Boton } from "@/compartido/ui/boton";
 
 const ETIQUETA_ROL: Record<string, string> = {
   cliente: "Cliente",
-  barbero: "Barbero",
-  dueno_sede: "Dueño de sede",
+  profesional: "Profesional",
+  dueno_sede: "Dueño de negocio",
   administrador_plataforma: "Administrador de plataforma",
 };
 
@@ -37,8 +37,8 @@ export function PanelSesion() {
       ) : sinRolAsignado ? (
         <div className="mt-3 flex flex-col gap-2">
           <p className="text-sm text-hueso">
-            Tu cuenta está creada y activa. Todavía no tiene un rol asignado en ninguna
-            sede.
+            Tu cuenta está creada y activa. Todavía no tiene un rol asignado en ningún
+            negocio asociado.
           </p>
           <p className="text-xs text-hueso-atenuado">
             Esto es normal: el acceso como cliente se activa con tu primer turno agendado
