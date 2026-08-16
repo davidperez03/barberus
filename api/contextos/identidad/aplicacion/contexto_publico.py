@@ -1,12 +1,12 @@
 """Superficie pública del contexto `identidad` para OTROS contextos delimitados.
 
 Convención para `agenda`/`fila`/`membresias`/`reportes`: si necesitan algo de
-`identidad` (p.ej. "¿este usuario es barbero activo de este tenant?"), importan SOLO de
+`identidad` (p.ej. "¿este usuario es profesional activo de este tenant?"), importan SOLO de
 este módulo -- nunca `contextos.identidad.dominio.*` ni
 `contextos.identidad.infraestructura.*` directamente. Hoy solo re-exporta el caso de uso
 y los tipos de resultado que un consumidor externo necesita para razonar; a medida que
 existan casos de uso reales en otros contextos que necesiten preguntas más específicas
-("es_barbero_activo", "tiene_membresia_vigente"), se agregan acá como funciones
+("es_profesional_activo", "tiene_membresia_vigente"), se agregan acá como funciones
 concretas, sin obligar al contexto llamante a conocer `RolActivo`/`Sesion` internos si no
 los necesita.
 """

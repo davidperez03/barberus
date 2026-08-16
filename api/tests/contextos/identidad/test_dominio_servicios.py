@@ -103,10 +103,10 @@ class TestAsignacionRolInvariantes:
 
 
 class TestCalcularExpiracionSesion:
-    def test_barbero_tiene_timeout_corto_por_dispositivo_compartido(self) -> None:
+    def test_profesional_tiene_timeout_corto_por_dispositivo_compartido(self) -> None:
         ahora = datetime(2026, 1, 1, tzinfo=UTC)
 
-        expira_at = calcular_expiracion_sesion(Rol.BARBERO, desde=ahora)
+        expira_at = calcular_expiracion_sesion(Rol.PROFESIONAL, desde=ahora)
 
         assert expira_at == ahora + timedelta(minutes=15)
 

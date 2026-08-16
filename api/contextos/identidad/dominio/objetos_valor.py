@@ -16,7 +16,7 @@ class Rol(str, Enum):
 
     ADMINISTRADOR_PLATAFORMA = "administrador_plataforma"
     DUENO_SEDE = "dueno_sede"
-    BARBERO = "barbero"
+    PROFESIONAL = "profesional"
     CLIENTE = "cliente"
 
 
