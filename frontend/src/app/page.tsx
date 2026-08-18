@@ -1,8 +1,9 @@
 /**
- * Landing de Barberus. Cascarón: solo compone piezas de `compartido/ui/` y de
- * `contextos/identidad/ui/` -- sin `useState`, sin fetch propio, sin lógica de negocio.
- * `agenda`/`fila` no existen todavía como contextos; esta página los INSINÚA (texto +
- * el mock del tablero en vivo) sin implementarlos, como pide el alcance de este PR.
+ * Landing de Barberus. Cascarón: solo compone piezas de `compartido/ui/`,
+ * `contextos/identidad/ui/` y `contextos/fila/ui/` -- sin `useState`, sin fetch propio,
+ * sin lógica de negocio. `fila` ya expone datos reales (mapa y tablero del hero, ambos
+ * alimentados por `GET /fila/publica`); `agenda` todavía no existe como contexto, así que
+ * esta página solo lo INSINÚA con texto, sin implementarlo.
  *
  * Barberus es una plataforma intermediaria entre negocios de belleza/cuidado personal
  * INDEPENDIENTES (barberías, salones de uñas, spas...) y sus clientes -- no una cadena
@@ -11,6 +12,7 @@
  */
 import Link from "next/link";
 import { SeccionAcceso } from "@/contextos/identidad/ui/seccion-acceso";
+import { MapaNegocios } from "@/contextos/fila/ui/mapa-negocios";
 import { HeroLanding } from "@/compartido/ui/hero-landing";
 import { MarqueeCategorias } from "@/compartido/ui/marquee-categorias";
 import { RevelaAlHacerScroll } from "@/compartido/ui/revela-al-hacer-scroll";
@@ -114,6 +116,26 @@ export default function PaginaPrincipal() {
               ))}
             </ol>
           </div>
+        </section>
+
+        <section id="mapa" className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-20">
+          <div className="mx-auto max-w-2xl">
+            <RevelaAlHacerScroll>
+              <p className="font-mono text-xs uppercase tracking-[0.2em] text-laton-suave">
+                Antes de salir de casa
+              </p>
+              <h2 className="mt-2 font-display text-2xl font-bold text-hueso sm:text-3xl">
+                Mira quién tiene fila ahora mismo, no quién decía tenerla ayer.
+              </h2>
+              <p className="mt-2 text-sm text-hueso-atenuado">
+                Cada negocio asociado con ubicación cargada aparece acá con su fila real:
+                cuántas personas esperan y cuánto falta, actualizado solo.
+              </p>
+            </RevelaAlHacerScroll>
+          </div>
+          <RevelaAlHacerScroll retraso={0.08} className="mt-8">
+            <MapaNegocios />
+          </RevelaAlHacerScroll>
         </section>
 
         <section id="acceso" className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-20">
