@@ -15,29 +15,26 @@ North star del producto: reducir los no-shows y el tiempo de espera en fila.
 del backend y el scaffolding del frontend (con el contexto `identidad` end-to-end,
 incluido registro/login).** Lo que sí existe y está completo:
 
-- `supabase/migrations/`: 11 migraciones SQL (`001` a `011`) que definen 21 tablas —
-  14 de dominio (`negocios`, `profesionales`, servicios, clientes, reservas, fila,
-  membresías, y `resumen_fila_publico`, el agregado público de fila entre negocios de la
-  migración `011`) y 7 de identidad/auth extendida (perfil de usuario, identidades
-  vinculadas, sesiones, MFA-ready, tokens de un solo uso, auditoría) — con Row Level
-  Security multi-tenant. Ver el detalle en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+- `supabase/migrations/`: 10 migraciones SQL (`001` a `010`) que definen 20 tablas —
+  13 de dominio (`negocios`, `profesionales`, servicios, clientes, reservas, fila,
+  membresías) y 7 de identidad/auth extendida (perfil de usuario, identidades vinculadas,
+  sesiones, MFA-ready, tokens de un solo uso, auditoría) — con Row Level Security
+  multi-tenant. Ver el detalle en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 - `scripts/migrations/APPLIED.md`: registro de cada migración, su estado y las decisiones
   de diseño detrás de cada una.
-- `api/`: scaffolding de la API FastAPI (arquitectura hexagonal + DDD) con los contextos
-  `identidad` y `fila` implementados. `identidad`, end-to-end: resolución de JWT/rol/tenant
-  (validado vía JWKS contra Supabase Auth, no HS256 legacy) y los endpoints
-  `POST /identidad/registro` / `POST /identidad/iniciar-sesion` como proxy a Supabase Auth
-  (GoTrue). `fila`, con su primer endpoint real: `GET /fila/publica`, sin autenticación,
-  comparador público de fila entre negocios para un mapa. El resto de contextos (`agenda`,
-  `membresias`, `reportes`) sigue como esqueleto de carpetas, pendiente de lógica en PRs
-  futuros. Ver [`api/README.md`](api/README.md).
+- `api/`: scaffolding de la API FastAPI (arquitectura hexagonal + DDD) con el contexto
+  `identidad` implementado end-to-end: resolución de JWT/rol/tenant (validado vía JWKS
+  contra Supabase Auth, no HS256 legacy) y los endpoints `POST /identidad/registro` /
+  `POST /identidad/iniciar-sesion` como proxy a Supabase Auth (GoTrue). El resto de
+  contextos (`agenda`, `fila`, `membresias`, `reportes`) sigue como esqueleto de carpetas,
+  pendiente de lógica en PRs futuros. Ver [`api/README.md`](api/README.md).
 - `frontend/`: scaffolding de Next.js (App Router + TypeScript + Tailwind), misma
   arquitectura hexagonal + DDD por contextos que `api/`, con el contexto `identidad`
   implementado: rutas propias `/iniciar-sesion` y `/registro` (no tabs de un mismo
   formulario) y una landing con parallax como elemento de diseño. `agenda`/`fila`/
   `cliente`/`membresia` sin construir todavía. Ver [`frontend/README.md`](frontend/README.md).
 
-Las 11 migraciones **ya se aplicaron a un proyecto Supabase real** (vinculado vía
+Las 10 migraciones **ya se aplicaron a un proyecto Supabase real** (vinculado vía
 `supabase link`, con `supabase db push`/`db reset --linked`) — no es solo un esquema
 diseñado contra un Postgres local efímero. Las credenciales de ese proyecto (URL, keys,
 SMTP) viven en `.env`/`api/.env`, gitignored, nunca en este README ni en el repo.
@@ -49,8 +46,8 @@ El stack está definido en la configuración de los agentes de este repo
 
 | Capa | Tecnología | Estado |
 |---|---|---|
-| Base de datos | Supabase / PostgreSQL, con Row Level Security | Implementado y aplicado a un proyecto Supabase real (esquema completo, 11 migraciones) |
-| Backend | FastAPI (Python), arquitectura hexagonal + DDD por contextos delimitados | Scaffolding + contextos `identidad` y `fila` implementados (JWT vía JWKS, registro/login proxy a Supabase Auth, `GET /fila/publica` sin autenticación — ver `api/README.md`); `agenda`/`membresias`/`reportes` sin lógica todavía |
+| Base de datos | Supabase / PostgreSQL, con Row Level Security | Implementado y aplicado a un proyecto Supabase real (esquema completo, 10 migraciones) |
+| Backend | FastAPI (Python), arquitectura hexagonal + DDD por contextos delimitados | Scaffolding + contexto `identidad` implementados (JWT vía JWKS, registro/login proxy a Supabase Auth — ver `api/README.md`); `agenda`/`fila`/`membresias`/`reportes` sin lógica todavía |
 | Frontend | Next.js (App Router) + TypeScript + Tailwind, arquitectura hexagonal + DDD por contextos | Scaffolding + contexto `identidad` (rutas `/iniciar-sesion` y `/registro`, landing con parallax) implementados (ver `frontend/README.md`); `agenda`/`fila`/`cliente`/`membresia` sin construir todavía |
 | Tiempo real (fila en vivo) | Supabase Realtime | No implementado |
 
@@ -59,19 +56,18 @@ El stack está definido en la configuración de los agentes de este repo
 ```
 barberus/
 ├── supabase/
-│   └── migrations/          # esquema SQL, 001_..._011_..., orden = orden numérico
+│   └── migrations/          # esquema SQL, 001_..._010_..., orden = orden numérico
 ├── scripts/
 │   └── migrations/
 │       └── APPLIED.md       # registro y notas de diseño de cada migración
 ├── api/                      # backend FastAPI — arquitectura hexagonal + DDD
 │   ├── contextos/
 │   │   ├── identidad/        # perfiles, roles, sesiones (implementado) — ver api/README.md
-│   │   ├── fila/               # GET /fila/publica, sin auth (implementado) — ver api/README.md
 │   │   ├── agenda/            # esqueleto de carpetas, sin código — PR futuro
+│   │   ├── fila/               # esqueleto de carpetas, sin código — PR futuro
 │   │   ├── membresias/         # esqueleto de carpetas, sin código — PR futuro
 │   │   └── reportes/           # esqueleto de carpetas, sin código — PR futuro
-│   ├── nucleo/                # shared kernel: configuración, excepciones base, tipos,
-│   │                           # factory de clientes Supabase (secreto/público)
+│   ├── nucleo/                # shared kernel: configuración, excepciones base, tipos
 │   ├── main.py                # composición: monta el router de cada contexto
 │   └── tests/
 ├── frontend/                  # frontend Next.js — arquitectura hexagonal + DDD por contextos
@@ -107,7 +103,7 @@ remoto), que es quien provee el esquema `auth`.
 
 Este repo **ya incluye `supabase/config.toml`** (proyecto Supabase inicializado, con la
 configuración de SMTP de producción vía variables de entorno — nunca credenciales en
-claro), y ya está vinculado a un proyecto Supabase remoto real con las 11 migraciones
+claro), y ya está vinculado a un proyecto Supabase remoto real con las 10 migraciones
 aplicadas. Para levantar un entorno local (Docker) contra ese mismo esquema:
 
 ```bash

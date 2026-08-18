@@ -10,8 +10,9 @@ en la sección "Backend (API)" de [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.
 Se eligió [`uv`](https://docs.astral.sh/uv/) (Poetry y `pip-tools` eran las alternativas
 consideradas) por instalación reproducible vía `uv.lock`, `uv run` sin activar
 manualmente el entorno virtual, y por ser sensiblemente más rápido resolviendo/instalando
--- relevante porque cada contexto futuro (`agenda`, `membresias`, `reportes`) sumará sus
-propias dependencias sin que el ciclo de instalación se vuelva un cuello de botella. El proyecto se declaró como aplicación, no como librería distribuible
+-- relevante porque cada contexto futuro (`agenda`, `fila`, `membresias`, `reportes`)
+sumará sus propias dependencias sin que el ciclo de instalación se vuelva un cuello de
+botella. El proyecto se declaró como aplicación, no como librería distribuible
 (`[tool.uv] package = false` en `pyproject.toml`): no hay `src/` layout ni
 `[build-system]`, `contextos/`/`nucleo/`/`main.py` viven directo bajo `api/`.
 
@@ -36,16 +37,11 @@ api/
 │   │   ├── aplicacion/     # casos de uso (orquestan el dominio vía sus puertos)
 │   │   ├── infraestructura/# adaptadores concretos contra Supabase (supabase-py, PyJWT)
 │   │   └── interfaces/     # router FastAPI, esquemas Pydantic, Depends
-│   ├── fila/                # comparador público de fila — sobre supabase/migrations/011
-│   │   ├── dominio/        # objetos de valor (ResumenFilaNegocio), puertos
-│   │   ├── aplicacion/     # caso de uso (ListarNegociosConFilaPublica)
-│   │   ├── infraestructura/# adaptador contra `resumen_fila_publico` (supabase-py)
-│   │   └── interfaces/     # router FastAPI, esquemas Pydantic, Depends
 │   ├── agenda/              # esqueleto de carpetas, sin código — PR futuro
+│   ├── fila/                # esqueleto de carpetas, sin código — PR futuro
 │   ├── membresias/          # esqueleto de carpetas, sin código — PR futuro
 │   └── reportes/            # esqueleto de carpetas, sin código — PR futuro
-├── nucleo/                  # shared kernel: configuración, excepciones base, tipos
-│                             # compartidos, factory de clientes Supabase (cliente_supabase.py)
+├── nucleo/                  # shared kernel: configuración, excepciones base, tipos compartidos
 ├── main.py                  # composición: monta el router de cada contexto
 ├── tests/                   # organizados en espejo de contextos/
 ├── pyproject.toml / uv.lock
@@ -98,49 +94,6 @@ privilegios elevados).
 Los tokens devueltos son los mismos que emitiría Supabase Auth directo: se usan igual
 como `Authorization: Bearer <access_token>` contra `GET /identidad/contexto` y el resto
 de endpoints.
-
-## Contexto `fila`
-
-Primer y único endpoint del contexto: `GET /fila/publica`. **Sin `Authorization`, sin
-`X-Tenant-Id`** -- es a propósito el único endpoint cross-tenant de toda la API, espejo
-de la única tabla de lectura pública del esquema (`resumen_fila_publico`, migración
-`supabase/migrations/011_fila_publica_agregada.sql`, ver la sección "Excepción única:
-lectura pública cross-tenant" de `docs/ARCHITECTURE.md`).
-
-Responde `200` con una lista de negocios activos, uno por ítem:
-
-```json
-[
-  {
-    "tenant_id": "5f3b...",
-    "nombre_sede": "Barbería Central",
-    "slug_sede": "barberia-central",
-    "personas_en_fila": 4,
-    "tiempo_espera_estimado_minutos": 25,
-    "latitud": 4.710989,
-    "longitud": -74.072092
-  }
-]
-```
-
-`tiempo_espera_estimado_minutos`, `latitud` y `longitud` pueden venir `null` (negocio sin
-historial reciente de atención o sin geolocalizar) -- el backend nunca inventa un valor,
-los propaga tal cual; decidir cómo mostrar ese `null` es responsabilidad del frontend.
-El caso de uso (`ListarNegociosConFilaPublica`) no aplica ninguna lógica de negocio propia:
-delega el filtro `activo = true` y el cálculo de las cifras enteramente a Postgres (RLS +
-triggers), y solo mapea la respuesta.
-
-## Factory de clientes Supabase (`nucleo/cliente_supabase.py`)
-
-Compartido por todos los contextos: `obtener_cliente_supabase_secreto()` (bypasea RLS,
-`SUPABASE_SECRET_KEY`) y `obtener_cliente_supabase_publico()` (respeta RLS,
-`SUPABASE_PUBLISHABLE_KEY`), ambos cacheados con `@lru_cache` para un único cliente por
-proceso. `nucleo/` solo resuelve la instanciación genérica -- decidir CUÁL de las dos
-key usar es responsabilidad de cada contexto, documentada en su propio
-`infraestructura/cliente_supabase.py` (p. ej. `identidad` usa la secreta para
-`roles_usuario`/`sesiones` y la pública solo para signup/login vía GoTrue; `fila` usa
-solo la pública, porque `resumen_fila_publico` es la única tabla con policy de lectura
-genuinamente abierta).
 
 ## Tests
 
