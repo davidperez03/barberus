@@ -9,7 +9,6 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from contextos.fila.interfaces.router import router as router_fila
 from contextos.identidad.interfaces.router import router as router_identidad
 from nucleo.configuracion import obtener_configuracion
 
@@ -34,9 +33,8 @@ if configuracion.lista_cors_origenes:
     )
 
 app.include_router(router_identidad)
-app.include_router(router_fila)
 
-# Los routers de agenda/membresias/reportes se agregan acá a medida que cada
+# Los routers de agenda/fila/membresias/reportes se agregan acá a medida que cada
 # contexto tenga su capa `interfaces/` implementada (PRs futuros) -- misma convención:
 # app.include_router(router_<contexto>)
 
