@@ -16,8 +16,8 @@ export const colores = {
   superficieAlta: "#232C2F",
   hueso: "#F2EDE4",
   huesoAtenuado: "#96A0A3",
-  laton: "#C08A3E",
-  latonSuave: "#D9A75C",
+  laton: "#C08A3E", // fondos/bordes/puntos -- no usar como color de texto pequeño (falla AA)
+  latonSuave: "#D9A75C", // misma familia, aclarado para pasar 4.5:1 sobre `carbon` cuando es texto
   senal: "#D64545", // fondos/bordes/punto "en vivo" -- no usar como color de texto pequeño (falla AA)
   senalTexto: "#E26B6B", // misma familia, aclarado para pasar 4.5:1 sobre `carbon` cuando es texto
   musgo: "#4F7A5B",
