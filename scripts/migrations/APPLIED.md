@@ -39,6 +39,41 @@ de ese criterio. Identificadores en español se escriben sin tildes ni "ñ" (`du
 | `008_membresias.sql` | Aplicada (Supabase real) | `niveles_membresia` + `membresias_cliente` + `historial_nivel_membresia_cliente` (tracking de nivel/beneficios, SIN billing/cobro), trigger de recálculo de nivel al completar reserva + RLS. | `drop table historial_nivel_membresia_cliente cascade; drop table membresias_cliente cascade; drop table niveles_membresia cascade; drop function recalcular_membresia_cliente;` |
 | `009_identidad_autenticacion.sql` | Aplicada (Supabase real) | Cierra la deuda dejada en `001`: políticas `roles_usuario_insert`/`roles_usuario_delete` (autoasignación de `cliente`, alta de `profesional` por `dueno_sede`, alta de `dueno_sede`/`administrador_plataforma` solo por `administrador_plataforma`; sin política de `UPDATE` a propósito). Agrega trigger `exigir_reautenticacion_clientes` (bloquea cambiar `correo`/`telefono` propio con un JWT de más de 10 minutos). | `drop trigger trg_clientes_exigir_reautenticacion on clientes; drop function exigir_reautenticacion_clientes; drop index idx_clientes_usuario_id_cualquier_tenant; drop policy roles_usuario_delete on roles_usuario; drop policy roles_usuario_insert on roles_usuario;` |
 | `010_identidad_extendida.sql` | Aplicada (Supabase real) | Replica en español, adaptado al negocio y sin SSO/SAML, la riqueza de `auth.*` de Supabase: `perfiles_usuario` (1:1 con `auth.users`, sincronizado por trigger, con whitelist REAL de columnas por diferencia de fila completa — `eliminado_at`/`bloqueado_hasta` exclusivos de `administrador_plataforma`, `bloqueado_hasta` es global a todos los negocios de la plataforma, el bloqueo por sede usa `clientes.activo`/`profesionales.activo` existentes), `identidades_usuario`, `sesiones` (con `nivel_autenticacion` tipo aal, `INSERT` valida pertenencia real al `tenant_id` declarado), `factores_autenticacion` + `retos_autenticacion` (MFA-ready, sin lógica de verificación), `tokens_autenticacion` (patrón genérico de token de un solo uso, sin política RLS — solo `service_role`), `auditoria_autenticacion`. Funciones nuevas: `es_personal_de_algun_tenant_del_usuario`, `es_dueno_de_algun_tenant_del_usuario`, `es_propio_o_dueno_del_tenant_opcional`, `es_dueno_del_factor`, `crear_perfil_usuario`, `sincronizar_perfil_usuario` (marca `barberus.contexto='sync_interno'` para no chocar con el trigger de columnas), `restringir_columnas_perfil_usuario`. Ver "Hallazgos al probar 009/010", "Corrección por revisión de guardianes" y "Segunda re-verificación" abajo. | `drop trigger trg_perfiles_usuario_restringir_columnas on perfiles_usuario; drop trigger trg_sincronizar_perfil_usuario on auth.users; drop trigger trg_crear_perfil_usuario on auth.users; drop function restringir_columnas_perfil_usuario, sincronizar_perfil_usuario, crear_perfil_usuario; drop table auditoria_autenticacion, tokens_autenticacion, retos_autenticacion, factores_autenticacion cascade; drop function es_dueno_del_factor; drop table sesiones, identidades_usuario cascade; drop table perfiles_usuario cascade; drop function es_propio_o_dueno_del_tenant_opcional, es_dueno_de_algun_tenant_del_usuario, es_personal_de_algun_tenant_del_usuario;` |
+| `011_perfil_cuenta_gestion.sql` | Aplicada (Supabase real) | Auditoría previa a construir el módulo de gestión de cuenta (ver "Auditoría de gestión de cuenta" abajo): agrega a `perfiles_usuario` las columnas `nombre_completo`/`avatar_url` (promovidas de `metadata_usuario` jsonb a columna tipada — transversal a todos los roles, a diferencia de `clientes.nombre_completo`/`profesionales.nombre_completo` que son identidad de negocio por sede), `terminos_aceptados_at` + `terminos_version` (consentimiento de T&C, versión explícita para poder re-exigir aceptación), `onboarding_completado_at` (+ índice parcial `where onboarding_completado_at is null`). Amplía la whitelist de autoedición de `restringir_columnas_perfil_usuario` (`create or replace`, mismo criterio deny-by-default de `010`) para incluir las 5 columnas nuevas en la fila propia; sin cambios en la fila ajena (staff/dueño) ni en `eliminado_at`/`bloqueado_hasta`. Roles/permisos (`rol_app`), cierre de sesión en todos los dispositivos (`sesiones.cerrada_at`) y verificación de correo obligatoria (`config.toml`) ya alcanzaban — sin cambio de esquema para esos 3 puntos. | `alter table perfiles_usuario drop column nombre_completo, drop column avatar_url, drop column terminos_aceptados_at, drop column terminos_version, drop column onboarding_completado_at; drop index idx_perfiles_usuario_onboarding_pendiente;` (además, revertir el `restringir_columnas_perfil_usuario()` a la versión de `010_identidad_extendida.sql`). |
+
+## Auditoría de gestión de cuenta (db-schema, 2026-08-20)
+
+Antes de que backend/frontend construyeran el módulo de gestión de cuenta sobre la identidad
+de `009`/`010`, se revisó qué del esquema ya alcanzaba vs. qué faltaba genuinamente:
+
+1. **Perfil básico (nombre/avatar)**: faltaba como columna tipada — `010` los sugería como
+   ejemplo dentro de `metadata_usuario` (jsonb), pero `perfiles_usuario` es la ÚNICA fuente de
+   "cómo se llama esta cuenta" para `dueno_sede`/`administrador_plataforma` (no tienen fila en
+   `clientes`/`profesionales`) y se lee en casi cada pantalla — encaja el criterio de columna
+   tipada sobre jsonb. `metadata_usuario` se mantiene para preferencias libres sin caso de uso
+   concreto todavía (tema, idioma).
+2. **Roles/permisos**: `rol_app` (`administrador_plataforma`/`dueno_sede`/`profesional`/
+   `cliente`) + `roles_usuario` YA alcanzan. Sin caso de uso concreto de permisos granulares
+   dentro de un rol — NO se agregó una tabla de permisos, sería especulativo.
+3. **Consentimiento de T&C**: no existía. Se agregó `terminos_aceptados_at` +
+   `terminos_version` (versión explícita, no booleano, para poder re-exigir consentimiento si
+   cambian los términos).
+4. **Onboarding inicial**: no existía. Se agregó `onboarding_completado_at` (columna propia,
+   no jsonb — se consulta en cada carga de la app) + índice parcial para el caso simétrico de
+   administración/analítica ("cuántos usuarios con onboarding pendiente").
+5. **Cierre de sesión en todos los dispositivos**: `sesiones.cerrada_at` + la política
+   `sesiones_update` ya existentes de `010` alcanzan sin cambios — es un `UPDATE ... SET
+   cerrada_at = now() WHERE usuario_id = auth.uid() AND cerrada_at IS NULL` (bulk update,
+   cada fila pasa por la misma policy).
+6. **Verificación de correo obligatoria**: ya resuelto por `supabase/config.toml`
+   (`[auth.email] enable_confirmations = true`), responsabilidad de configuración de Supabase
+   Auth, no de esquema.
+
+Validado: las 11 migraciones se corrieron desde cero contra Postgres real (Docker, mismo
+esquema `auth` mínimo simulando `auth.users` + `auth.uid()`/`auth.role()`/`auth.jwt()` que se
+usó para validar `009`/`010`). Se probó además que la autoedición de las 5 columnas nuevas
+pasa, y que `bloqueado_hasta`/`eliminado_at` siguen bloqueados para la fila propia tras el
+`create or replace` de `restringir_columnas_perfil_usuario`.
 
 ## Cómo aplicar
 
