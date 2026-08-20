@@ -3,6 +3,14 @@
  * `api/contextos/identidad/interfaces/esquemas.py` -- sin React, sin fetch, sin Next.
  * Se reusan desde `aplicacion/` (hooks) e `infraestructura/` (cliente HTTP) para que
  * ambas capas hablen el mismo idioma de dominio sin acoplarse entre sí.
+ *
+ * Estos son tipos de DOMINIO (camelCase, forma que usa el resto del frontend), no la
+ * forma cruda del JSON que viaja por HTTP -- para eso, `infraestructura/` usa los tipos
+ * generados en `src/compartido/tipos-api/openapi.d.ts` (`pnpm generar-tipos-api`) como
+ * fuente de verdad y los mapea acá. `RolIdentidad` es la excepción: el backend expone
+ * `rol` como `str` plano en `ContextoIdentidadRespuesta` (no como enum en el schema
+ * Pydantic), así que OpenAPI no puede generar la unión de literales -- se mantiene escrita
+ * a mano, sincronizada con `contextos.identidad.dominio.objetos_valor.Rol` del backend.
  */
 
 /** Body de `POST /identidad/registro` e `/identidad/iniciar-sesion`. */
@@ -16,8 +24,8 @@ export interface Credenciales {
  * inmediata (login siempre; registro solo si el proyecto no exige confirmación de correo).
  */
 export interface DatosSesionAuth {
-  accessToken: string;
-  refreshToken: string;
+  tokenAcceso: string;
+  tokenActualizacion: string;
   usuarioId: string;
   expiraAt: string;
 }

@@ -51,6 +51,43 @@ src/
 `agenda`, `fila`, `cliente`, `membresia` no existen todavía como contextos de frontend --
 se agregan cuando el backend tenga la lógica correspondiente (hoy son esqueleto en `api/`).
 
+## Tipos generados desde el OpenAPI del backend
+
+`src/compartido/tipos-api/openapi.d.ts` se genera con
+[`openapi-typescript`](https://www.npmjs.com/package/openapi-typescript) a partir del
+schema OpenAPI que FastAPI ya expone solo (`api/main.py`, sin tocar nada del backend para
+esto). Es la fuente de verdad de la FORMA del JSON que viaja por HTTP (nombres de campo en
+snake_case, opcionalidad, nesting) -- evita mantener a mano tipos "crudos" de respuesta que
+se desincronizan en silencio cuando cambia un esquema Pydantic (ver
+`contextos/identidad/infraestructura/repositorio-identidad-http.ts`, que usa
+`SchemaDatosSesionAuthRespuesta`/`SchemaContextoIdentidadRespuesta` en vez de interfaces
+escritas a mano).
+
+```bash
+cd frontend
+pnpm generar-tipos-api
+```
+
+Ese comando:
+
+1. Corre `api/scripts/exportar_openapi.py` vía `uv run --directory ../api` -- importa la
+   app FastAPI real y vuelca `app.openapi()` a un JSON (no necesita `uvicorn` corriendo,
+   solo `api/.env` completo porque `main.py` valida configuración al importarse).
+2. Corre `openapi-typescript` sobre ese JSON y escribe
+   `src/compartido/tipos-api/openapi.d.ts`.
+3. Borra el JSON intermedio (`frontend/openapi.json`, gitignorado -- no es la fuente de
+   verdad versionada).
+
+**`openapi.d.ts` SÍ se versiona** (a diferencia del JSON intermedio): así el frontend
+compila sin depender de que el backend esté corriendo. Regenerarlo a mano cuando cambie
+algún esquema Pydantic de `api/contextos/*/interfaces/esquemas.py` -- no hay hook
+automático todavía (candidato a CI/pre-commit futuro).
+
+Solo genera TIPOS estáticos, no un cliente HTTP: `openapi-typescript` no trae dependencias
+de runtime. `RolIdentidad` (`contextos/identidad/dominio/tipos.ts`) sigue escrito a mano
+porque el backend expone `rol` como `str` plano (no enum) en el schema -- ver el
+comentario en ese archivo.
+
 ## Contexto `identidad`
 
 Implementa los 3 endpoints reales de `api/contextos/identidad/interfaces/router.py`:
