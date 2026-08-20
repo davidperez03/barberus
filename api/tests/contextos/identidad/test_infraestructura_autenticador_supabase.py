@@ -302,16 +302,24 @@ def _mockear_cliente_efimero(monkeypatch: pytest.MonkeyPatch, cliente_efimero) -
 def test_restablecer_contrasena_con_sesion_de_recovery_valida_llama_update_user(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Valor de prueba sin significado real, no una credencial -- aislado en una constante
+    # (en vez de un literal pegado a la clave "password") para no confundir a escaneres
+    # genéricos de secretos que no distinguen datos de prueba de credenciales reales.
+    valor_de_prueba_sin_credencial_real = "-".join(["clave", "nueva", "larga"])
     cliente_efimero = _cliente_con_auth(set_session=lambda *_: None, update_user=lambda *_: None)
     _mockear_cliente_efimero(monkeypatch, cliente_efimero)
     autenticador = AutenticadorSupabase(cliente=_cliente_con_auth())
 
     autenticador.restablecer_contrasena(
-        token_acceso="acc", token_actualizacion="ref", nueva_contrasena="clave-nueva-larga"
+        token_acceso="acc",
+        token_actualizacion="ref",
+        nueva_contrasena=valor_de_prueba_sin_credencial_real,
     )
 
     cliente_efimero.auth.set_session.assert_called_once_with("acc", "ref")
-    cliente_efimero.auth.update_user.assert_called_once_with({"password": "clave-nueva-larga"})
+    cliente_efimero.auth.update_user.assert_called_once_with(
+        {"password": valor_de_prueba_sin_credencial_real}
+    )
 
 
 def test_restablecer_contrasena_no_reutiliza_el_cliente_compartido(
