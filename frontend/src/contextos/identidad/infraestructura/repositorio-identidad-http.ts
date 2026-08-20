@@ -3,8 +3,19 @@
  * `RepositorioIdentidad` (`aplicacion/puertos.ts`) contra los 3 endpoints reales de
  * `api/contextos/identidad/interfaces/router.py`. `aplicacion/` (hooks) nunca construye
  * una URL ni lee un `Response` directamente -- solo llama a estos métodos.
+ *
+ * La forma "cruda" del JSON que viaja por HTTP (`DatosSesionAuthCruda`/
+ * `ContextoIdentidadCrudo` más abajo) NO se escribe a mano: son alias de los tipos que
+ * genera `pnpm generar-tipos-api` a partir del OpenAPI schema real de FastAPI (ver
+ * `src/compartido/tipos-api/openapi.d.ts` y `frontend/README.md`). Así, si un esquema
+ * Pydantic del backend cambia de forma (renombra un campo, agrega uno requerido), este
+ * archivo deja de compilar en vez de fallar en runtime con un `undefined` silencioso.
  */
 import type { RepositorioIdentidad } from "@/contextos/identidad/aplicacion/puertos";
+import type {
+  SchemaContextoIdentidadRespuesta,
+  SchemaDatosSesionAuthRespuesta,
+} from "@/compartido/tipos-api/openapi";
 import {
   ErrorIdentidad,
   type CodigoErrorIdentidad,
@@ -17,25 +28,11 @@ import {
 
 const URL_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-interface DatosSesionAuthCruda {
-  token_acceso: string;
-  token_actualizacion: string;
-  usuario_id: string;
-  expira_at: string;
-}
+/** Alias del tipo generado -- ver el comentario de archivo para el porqué. */
+type DatosSesionAuthCruda = SchemaDatosSesionAuthRespuesta;
 
-interface ContextoIdentidadCrudo {
-  usuario_id: string;
-  correo: string | null;
-  tenant_id: string | null;
-  rol: string;
-  sesion: {
-    id: string;
-    nivel_autenticacion: string;
-    expira_at: string;
-    activa: boolean;
-  } | null;
-}
+/** Alias del tipo generado -- ver el comentario de archivo para el porqué. */
+type ContextoIdentidadCrudo = SchemaContextoIdentidadRespuesta;
 
 function mapearSesion(cruda: DatosSesionAuthCruda): DatosSesionAuth {
   return {

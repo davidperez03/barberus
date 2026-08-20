@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "generar-tipos-api": "uv run --directory ../api python scripts/exportar_openapi.py --salida ../frontend/openapi.json && openapi-typescript openapi.json -o src/compartido/tipos-api/openapi.d.ts --root-types && rm -f openapi.json"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.8.0",
@@ -27,6 +28,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
+    "openapi-typescript": "^7.13.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   },

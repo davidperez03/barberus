@@ -41,6 +41,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# schema OpenAPI exportado como paso intermedio de `pnpm generar-tipos-api` -- artefacto
+# de build, no la fuente de verdad. El .d.ts generado en src/compartido/tipos-api/ SÍ se
+# versiona (ver frontend/README.md).
+/openapi.json
+
 # Generado automaticamente por `next dev` (advertencia para agentes de IA), no autoria
 # nuestra -- se regenera solo, no versionar.
 AGENTS.md
