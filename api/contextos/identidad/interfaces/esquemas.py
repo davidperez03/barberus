@@ -13,17 +13,44 @@ from contextos.identidad.dominio.objetos_valor import (
     ContextoIdentidad,
     DatosSesionAuth,
     DatosToken,
+    EventoAuditoria,
+    FactorMfa,
+    InscripcionMfaTotp,
     PerfilCuenta,
+    Sesion,
 )
 
 
 class SesionRespuesta(BaseModel):
+    """Respuesta de `GET /identidad/sesiones` (una fila) y de `sesion` en
+    `ContextoIdentidadRespuesta` -- dispositivo/IP/nivel de autenticación/timestamps de
+    `public.sesiones`, nunca el JWT en sí."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: str
+    dispositivo: str | None
+    ip: str | None
     nivel_autenticacion: str
+    iniciada_at: datetime
+    ultima_actividad_at: datetime
     expira_at: datetime
+    cerrada_at: datetime | None
     activa: bool
+
+    @classmethod
+    def desde_dominio(cls, sesion: Sesion) -> SesionRespuesta:
+        return cls(
+            id=sesion.id,
+            dispositivo=sesion.dispositivo,
+            ip=sesion.ip,
+            nivel_autenticacion=sesion.nivel_autenticacion.value,
+            iniciada_at=sesion.iniciada_at,
+            ultima_actividad_at=sesion.ultima_actividad_at,
+            expira_at=sesion.expira_at,
+            cerrada_at=sesion.cerrada_at,
+            activa=sesion.activa,
+        )
 
 
 class ContextoIdentidadRespuesta(BaseModel):
@@ -37,14 +64,9 @@ class ContextoIdentidadRespuesta(BaseModel):
 
     @classmethod
     def desde_dominio(cls, contexto: ContextoIdentidad) -> ContextoIdentidadRespuesta:
-        sesion = None
-        if contexto.sesion is not None:
-            sesion = SesionRespuesta(
-                id=contexto.sesion.id,
-                nivel_autenticacion=contexto.sesion.nivel_autenticacion.value,
-                expira_at=contexto.sesion.expira_at,
-                activa=contexto.sesion.activa,
-            )
+        sesion = (
+            SesionRespuesta.desde_dominio(contexto.sesion) if contexto.sesion is not None else None
+        )
         return cls(
             usuario_id=contexto.usuario_id,
             correo=contexto.correo,
@@ -172,3 +194,116 @@ class RestablecerContrasenaPeticion(BaseModel):
     token_acceso: str
     token_actualizacion: str
     nueva_contrasena: str = Field(min_length=8, description="Mínimo 8 caracteres (mínimo de GoTrue).")
+
+
+class EventoAuditoriaRespuesta(BaseModel):
+    """Una fila de `GET /identidad/auditoria`."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    evento: str
+    tenant_id: str | None
+    ip: str | None
+    user_agent: str | None
+    metadata: dict
+    creado_at: datetime
+
+    @classmethod
+    def desde_dominio(cls, evento: EventoAuditoria) -> EventoAuditoriaRespuesta:
+        return cls(
+            id=evento.id,
+            evento=evento.evento.value,
+            tenant_id=evento.tenant_id,
+            ip=evento.ip,
+            user_agent=evento.user_agent,
+            metadata=evento.metadata,
+            creado_at=evento.creado_at,
+        )
+
+
+class CambiarContrasenaPeticion(BaseModel):
+    """Body de `POST /identidad/cambiar-contrasena` -- distinto de
+    `RestablecerContrasenaPeticion` (esa es el flujo SIN sesión vía correo). Exige la
+    contraseña ACTUAL: nunca basta con estar logueado para poder cambiarla (ver
+    `aplicacion.cambiar_contrasena`)."""
+
+    contrasena_actual: str = Field(min_length=8)
+    nueva_contrasena: str = Field(min_length=8, description="Mínimo 8 caracteres (mínimo de GoTrue).")
+
+
+class CambiarCorreoPeticion(BaseModel):
+    """Body de `POST /identidad/cambiar-correo`. Requiere reautenticación reciente (JWT
+    < 10 minutos) -- ver `aplicacion.cambiar_correo`. GoTrue envía confirmación por
+    correo (`double_confirm_changes = true`): el cambio queda pendiente hasta que se
+    confirme, esta petición solo lo inicia."""
+
+    nuevo_correo: EmailStr
+
+
+class InscribirMfaPeticion(BaseModel):
+    """Body de `POST /identidad/mfa/inscribir`."""
+
+    nombre_amistoso: str | None = Field(
+        default=None, min_length=1, max_length=100, description='p.ej. "iPhone de Ana"'
+    )
+
+
+class InscripcionMfaRespuesta(BaseModel):
+    """Respuesta de `POST /identidad/mfa/inscribir`: secreto/QR para configurar la app
+    authenticator. El factor queda `unverified` hasta
+    `POST /identidad/mfa/verificar-inscripcion`."""
+
+    factor_id: str
+    secreto: str
+    codigo_qr: str
+    uri: str
+    nombre_amistoso: str | None
+
+    @classmethod
+    def desde_dominio(cls, inscripcion: InscripcionMfaTotp) -> InscripcionMfaRespuesta:
+        return cls(
+            factor_id=inscripcion.factor_id,
+            secreto=inscripcion.secreto,
+            codigo_qr=inscripcion.codigo_qr,
+            uri=inscripcion.uri,
+            nombre_amistoso=inscripcion.nombre_amistoso,
+        )
+
+
+class VerificarInscripcionMfaPeticion(BaseModel):
+    """Body de `POST /identidad/mfa/verificar-inscripcion`."""
+
+    factor_id: str
+    codigo: str = Field(min_length=6, max_length=10, description="Código TOTP de la app authenticator.")
+
+
+class DesactivarMfaPeticion(BaseModel):
+    """Body de `POST /identidad/mfa/desactivar`. Exige reautenticación reciente (JWT <
+    10 minutos) -- ver `aplicacion.desactivar_mfa`."""
+
+    factor_id: str
+
+
+class FactorMfaRespuesta(BaseModel):
+    """Una fila de `GET /identidad/mfa/factores`."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    tipo: str
+    estado: str
+    nombre_amistoso: str | None
+    creado_at: datetime
+    actualizado_at: datetime
+
+    @classmethod
+    def desde_dominio(cls, factor: FactorMfa) -> FactorMfaRespuesta:
+        return cls(
+            id=factor.id,
+            tipo=factor.tipo.value,
+            estado=factor.estado.value,
+            nombre_amistoso=factor.nombre_amistoso,
+            creado_at=factor.creado_at,
+            actualizado_at=factor.actualizado_at,
+        )

@@ -103,3 +103,55 @@ class EdicionPerfilRechazada(AccesoNoAutorizado):
     esto solo debería dispararse ante una condición de carrera o un cambio de esquema no
     reflejado todavía en `interfaces/esquemas.py`, nunca por un intento normal del cliente.
     """
+
+
+class SesionNoEncontrada(RecursoNoEncontrado):
+    """No existe (o no pertenece al usuario autenticado) la fila de `sesiones` pedida --
+    `GET /identidad/sesiones/{sesion_id}/cerrar` u operaciones similares por id."""
+
+
+class ReautenticacionRequerida(AccesoNoAutorizado):
+    """El JWT de la request tiene un `iat` (emitido en) de más de 10 minutos y la
+    operación pedida es sensible (cambiar contraseña, cambiar correo, eliminar cuenta) --
+    mismo umbral/criterio que el trigger SQL `exigir_reautenticacion_clientes`
+    (`009_identidad_autenticacion.sql`), replicado en la capa de aplicación porque no
+    hay un trigger equivalente para `auth.users`/Auth Admin API. El llamador debe volver
+    a iniciar sesión (obtener un JWT nuevo) e intentar de nuevo -- nunca se resuelve
+    "refrescando" el token existente, porque `refresh_token` no vuelve a probar que el
+    usuario conoce su contraseña.
+    """
+
+
+class CredencialesActualesIncorrectas(ExcepcionBarberus):
+    """`cambiar-contrasena`: la `contrasena_actual` enviada no coincide con la real.
+
+    Excepción propia (no reutiliza `CredencialesInvalidas`) porque acá SÍ sabemos quién
+    es el llamador (JWT ya validado) -- es un rechazo de validación de la operación, no
+    un fallo de autenticación anónima; se mapea a HTTP 400 en `interfaces/`, no a 401.
+    """
+
+
+class CorreoNoDisponible(ExcepcionBarberus):
+    """`cambiar-correo`: GoTrue rechazó el nuevo correo porque ya pertenece a otra cuenta.
+
+    Mensaje deliberadamente genérico en `interfaces/` -- no repite el texto literal de
+    GoTrue ("ya está registrado"), aunque el HECHO de que la operación falle (a
+    diferencia de un 202 genérico como en registro/recuperación) sigue siendo una señal
+    observable: ver la nota de anti-enumeración en
+    `infraestructura.autenticador_supabase.AutenticadorSupabase.cambiar_correo` para por
+    qué esta fuga parcial es una limitación aceptada de GoTrue en este flujo
+    autenticado (no del flujo anónimo de registro/login, que sí queda 100% mitigado),
+    no algo que este contexto pueda cerrar del todo sin dejar de usar el flujo nativo.
+    """
+
+
+class CodigoMfaInvalido(ExcepcionBarberus):
+    """El código TOTP ingresado no corresponde al factor/reto, o el reto ya expiró.
+
+    Se mapea a HTTP 400 en `interfaces/` -- la identidad del llamador ya es conocida
+    (JWT válido), esto es un rechazo de validación de la operación, no de autenticación.
+    """
+
+
+class FactorMfaNoEncontrado(RecursoNoEncontrado):
+    """El `factor_id` dado no existe (o no pertenece al usuario autenticado) según GoTrue."""

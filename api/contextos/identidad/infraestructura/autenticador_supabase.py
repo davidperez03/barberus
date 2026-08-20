@@ -19,6 +19,8 @@ from supabase_auth.errors import AuthApiError, AuthInvalidJwtError, AuthSessionM
 from supabase_auth.types import AuthResponse
 
 from contextos.identidad.dominio.excepciones import (
+    CorreoNoDisponible,
+    CredencialesActualesIncorrectas,
     CredencialesInvalidas,
     RegistroSinSesionInmediata,
     SolicitudAutenticacionInvalida,
@@ -26,6 +28,7 @@ from contextos.identidad.dominio.excepciones import (
 )
 from contextos.identidad.dominio.objetos_valor import DatosSesionAuth
 from contextos.identidad.infraestructura.cliente_supabase import (
+    obtener_cliente_con_sesion_de_token,
     obtener_cliente_supabase_auth_efimero,
 )
 
@@ -138,6 +141,59 @@ class AutenticadorSupabase:
             raise SolicitudAutenticacionInvalida(str(error)) from error
         except (AuthSessionMissingError, AuthInvalidJwtError) as error:
             raise TokenInvalido("La sesión de recuperación no es válida o expiró") from error
+
+    def verificar_contrasena(self, correo: str, contrasena: str) -> None:
+        # Cliente NUEVO, mismo motivo que `restablecer_contrasena`: `sign_in_with_password`
+        # muta el storage de sesión en memoria del cliente -- nunca el compartido. La
+        # sesión que devuelve (si la contraseña es correcta) se descarta a propósito: este
+        # método solo prueba conocimiento de la contraseña, no produce tokens utilizables.
+        cliente_efimero = obtener_cliente_supabase_auth_efimero()
+        try:
+            cliente_efimero.auth.sign_in_with_password({"email": correo, "password": contrasena})
+        except AuthApiError as error:
+            if error.code in _CODIGOS_CREDENCIALES_INVALIDAS:
+                raise CredencialesActualesIncorrectas(
+                    "La contraseña actual no es correcta"
+                ) from error
+            raise SolicitudAutenticacionInvalida(str(error)) from error
+
+    def cambiar_contrasena(self, token_acceso: str, nueva_contrasena: str) -> None:
+        # `obtener_cliente_con_sesion_de_token` ya materializa la sesión (`set_session`
+        # con refresh token vacío -- el access token de la request YA fue validado como
+        # no expirado por `ValidadorJwtSupabase`) y mapea sesión inválida/expirada a
+        # `TokenInvalido`; acá solo queda encadenar la operación de dominio propia.
+        cliente_efimero = obtener_cliente_con_sesion_de_token(token_acceso)
+        try:
+            cliente_efimero.auth.update_user({"password": nueva_contrasena})
+        except AuthApiError as error:
+            raise SolicitudAutenticacionInvalida(str(error)) from error
+
+    def cambiar_correo(self, token_acceso: str, nuevo_correo: str) -> None:
+        cliente_efimero = obtener_cliente_con_sesion_de_token(token_acceso)
+        try:
+            cliente_efimero.auth.update_user({"email": nuevo_correo})
+        except AuthApiError as error:
+            if error.code == "email_exists":
+                # ANTI-ENUMERACIÓN, DECISIÓN DOCUMENTADA: a diferencia de
+                # registrar()/iniciar_sesion() (donde GoTrue mismo ya evita revelar si
+                # un correo tiene cuenta), acá GoTrue SÍ distingue con un código propio
+                # (`email_exists`) cuando el correo nuevo ya pertenece a otra cuenta --
+                # es el propio backend de GoTrue el que impone unicidad de email y
+                # responde distinto. No se puede ocultar del todo sin dejar de usar el
+                # flujo nativo de `update_user` (que es justamente lo que este proyecto
+                # prefiere sobre reimplementar el cambio de correo a mano). Mitigación
+                # aplicada: el mensaje que ve el cliente es genérico (no repite "ya está
+                # registrado" textual de GoTrue) -- pero el HECHO de que la operación
+                # falle sigue siendo observable (a diferencia del 202 uniforme de
+                # registro/recuperación). Aceptado porque quien dispara este endpoint ya
+                # está autenticado y pasó reautenticación reciente (`CambiarCorreo`
+                # exige JWT < 10 min) -- el costo de intentarlo repetidamente para
+                # enumerar cuentas ajenas es mucho más alto que en un endpoint anónimo.
+                raise CorreoNoDisponible(
+                    "No se pudo actualizar el correo. Verifica que sea válido e intenta "
+                    "con otro."
+                ) from error
+            raise SolicitudAutenticacionInvalida(str(error)) from error
 
     @staticmethod
     def _mapear(respuesta: AuthResponse) -> DatosSesionAuth:

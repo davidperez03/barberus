@@ -5,7 +5,7 @@ puertos -- ninguna dependencia real de Supabase/red.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -19,6 +19,7 @@ from contextos.identidad.aplicacion.solicitar_recuperacion_contrasena import (
 )
 from contextos.identidad.dominio.excepciones import (
     PerfilNoEncontrado,
+    ReautenticacionRequerida,
     SolicitudAutenticacionInvalida,
     TokenInvalido,
 )
@@ -205,7 +206,24 @@ class TestEliminarCuenta:
     def test_delega_el_usuario_id_del_contexto_resuelto_al_puerto(self) -> None:
         gestor = GestorCuentaFake()
         caso_de_uso = EliminarCuenta(gestor_cuenta=gestor)
+        emitido_en = datetime(2026, 1, 1, tzinfo=UTC)
 
-        caso_de_uso.ejecutar(usuario_id=USUARIO_ID)
+        caso_de_uso.ejecutar(
+            usuario_id=USUARIO_ID, emitido_en=emitido_en, ahora=emitido_en + timedelta(minutes=1)
+        )
 
         assert gestor.cuentas_eliminadas == [USUARIO_ID]
+
+    def test_jwt_viejo_no_llega_a_eliminar_la_cuenta(self) -> None:
+        gestor = GestorCuentaFake()
+        caso_de_uso = EliminarCuenta(gestor_cuenta=gestor)
+        emitido_en = datetime(2026, 1, 1, tzinfo=UTC)
+
+        with pytest.raises(ReautenticacionRequerida):
+            caso_de_uso.ejecutar(
+                usuario_id=USUARIO_ID,
+                emitido_en=emitido_en,
+                ahora=emitido_en + timedelta(minutes=11),
+            )
+
+        assert gestor.cuentas_eliminadas == []

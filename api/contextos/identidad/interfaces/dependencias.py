@@ -9,14 +9,22 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Query, status
 
 from contextos.identidad.aplicacion.actualizar_perfil_cuenta import ActualizarPerfilCuenta
+from contextos.identidad.aplicacion.cambiar_contrasena import CambiarContrasena
+from contextos.identidad.aplicacion.cambiar_correo import CambiarCorreo
+from contextos.identidad.aplicacion.cerrar_sesion import CerrarSesion
 from contextos.identidad.aplicacion.cerrar_todas_las_sesiones import CerrarTodasLasSesiones
+from contextos.identidad.aplicacion.desactivar_mfa import DesactivarMfa
 from contextos.identidad.aplicacion.eliminar_cuenta import EliminarCuenta
 from contextos.identidad.aplicacion.iniciar_sesion_con_credenciales import (
     IniciarSesionConCredenciales,
 )
+from contextos.identidad.aplicacion.inscribir_mfa import InscribirMfa
+from contextos.identidad.aplicacion.listar_auditoria import ListarAuditoria
+from contextos.identidad.aplicacion.listar_factores_mfa import ListarFactoresMfa
+from contextos.identidad.aplicacion.listar_sesiones import ListarSesiones
 from contextos.identidad.aplicacion.obtener_perfil_cuenta import ObtenerPerfilCuenta
 from contextos.identidad.aplicacion.registrar_usuario import RegistrarUsuario
 from contextos.identidad.aplicacion.resolver_contexto_identidad import ResolverContextoIdentidad
@@ -24,6 +32,7 @@ from contextos.identidad.aplicacion.restablecer_contrasena import RestablecerCon
 from contextos.identidad.aplicacion.solicitar_recuperacion_contrasena import (
     SolicitarRecuperacionContrasena,
 )
+from contextos.identidad.aplicacion.verificar_inscripcion_mfa import VerificarInscripcionMfa
 from contextos.identidad.dominio.excepciones import (
     SesionCerrada,
     SesionExpirada,
@@ -37,10 +46,14 @@ from contextos.identidad.dominio.puertos import ValidadorTokenPuerto
 from contextos.identidad.infraestructura.administrador_cuenta_supabase import (
     AdministradorCuentaSupabase,
 )
+from contextos.identidad.infraestructura.autenticador_mfa_supabase import AutenticadorMfaSupabase
 from contextos.identidad.infraestructura.autenticador_supabase import AutenticadorSupabase
 from contextos.identidad.infraestructura.cliente_supabase import (
     obtener_cliente_supabase,
     obtener_cliente_supabase_auth,
+)
+from contextos.identidad.infraestructura.repositorio_auditoria_supabase import (
+    RepositorioAuditoriaSupabase,
 )
 from contextos.identidad.infraestructura.repositorio_perfil_supabase import (
     RepositorioPerfilSupabase,
@@ -225,3 +238,86 @@ CerrarTodasLasSesionesDep = Annotated[
     CerrarTodasLasSesiones, Depends(obtener_caso_uso_cerrar_todas_las_sesiones)
 ]
 EliminarCuentaDep = Annotated[EliminarCuenta, Depends(obtener_caso_uso_eliminar_cuenta)]
+
+
+# `ListarSesiones`/`CerrarSesion` no se cachean con `@lru_cache`: `RepositorioSesionesSupabase`
+# solo guarda el cliente `secret` (ya cacheado por `obtener_cliente_supabase`), así que
+# instanciar el caso de uso por request es barato y evita compartir estado mutable entre
+# requests sin necesidad -- mismo criterio que `ObtenerPerfilCuenta`/`ActualizarPerfilCuenta`.
+def obtener_caso_uso_listar_sesiones() -> ListarSesiones:
+    return ListarSesiones(repositorio_sesiones=RepositorioSesionesSupabase(cliente=obtener_cliente_supabase()))
+
+
+def obtener_caso_uso_cerrar_sesion() -> CerrarSesion:
+    return CerrarSesion(repositorio_sesiones=RepositorioSesionesSupabase(cliente=obtener_cliente_supabase()))
+
+
+ListarSesionesDep = Annotated[ListarSesiones, Depends(obtener_caso_uso_listar_sesiones)]
+CerrarSesionDep = Annotated[CerrarSesion, Depends(obtener_caso_uso_cerrar_sesion)]
+
+
+def obtener_caso_uso_listar_auditoria() -> ListarAuditoria:
+    return ListarAuditoria(
+        repositorio_auditoria=RepositorioAuditoriaSupabase(cliente=obtener_cliente_supabase())
+    )
+
+
+ListarAuditoriaDep = Annotated[ListarAuditoria, Depends(obtener_caso_uso_listar_auditoria)]
+
+
+@lru_cache
+def obtener_caso_uso_cambiar_contrasena() -> CambiarContrasena:
+    cliente_auth = obtener_cliente_supabase_auth()
+    return CambiarContrasena(autenticador=AutenticadorSupabase(cliente=cliente_auth))
+
+
+@lru_cache
+def obtener_caso_uso_cambiar_correo() -> CambiarCorreo:
+    cliente_auth = obtener_cliente_supabase_auth()
+    return CambiarCorreo(autenticador=AutenticadorSupabase(cliente=cliente_auth))
+
+
+CambiarContrasenaDep = Annotated[CambiarContrasena, Depends(obtener_caso_uso_cambiar_contrasena)]
+CambiarCorreoDep = Annotated[CambiarCorreo, Depends(obtener_caso_uso_cambiar_correo)]
+
+
+@lru_cache
+def obtener_caso_uso_inscribir_mfa() -> InscribirMfa:
+    return InscribirMfa(autenticador_mfa=AutenticadorMfaSupabase())
+
+
+@lru_cache
+def obtener_caso_uso_verificar_inscripcion_mfa() -> VerificarInscripcionMfa:
+    return VerificarInscripcionMfa(autenticador_mfa=AutenticadorMfaSupabase())
+
+
+@lru_cache
+def obtener_caso_uso_desactivar_mfa() -> DesactivarMfa:
+    return DesactivarMfa(autenticador_mfa=AutenticadorMfaSupabase())
+
+
+@lru_cache
+def obtener_caso_uso_listar_factores_mfa() -> ListarFactoresMfa:
+    return ListarFactoresMfa(autenticador_mfa=AutenticadorMfaSupabase())
+
+
+InscribirMfaDep = Annotated[InscribirMfa, Depends(obtener_caso_uso_inscribir_mfa)]
+VerificarInscripcionMfaDep = Annotated[
+    VerificarInscripcionMfa, Depends(obtener_caso_uso_verificar_inscripcion_mfa)
+]
+DesactivarMfaDep = Annotated[DesactivarMfa, Depends(obtener_caso_uso_desactivar_mfa)]
+ListarFactoresMfaDep = Annotated[ListarFactoresMfa, Depends(obtener_caso_uso_listar_factores_mfa)]
+
+
+def obtener_parametros_paginacion_auditoria(
+    limite: Annotated[int, Query(ge=1, le=100)] = 20,
+    pagina: Annotated[int, Query(ge=1)] = 1,
+) -> tuple[int, int]:
+    """`(limite, offset)` para `GET /identidad/auditoria` -- tope duro de 100 filas por
+    página (nunca "toda la tabla sin límite")."""
+    return limite, (pagina - 1) * limite
+
+
+ParametrosPaginacionAuditoriaDep = Annotated[
+    tuple[int, int], Depends(obtener_parametros_paginacion_auditoria)
+]

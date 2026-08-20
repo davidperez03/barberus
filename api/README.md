@@ -95,6 +95,32 @@ Los tokens devueltos son los mismos que emitiría Supabase Auth directo: se usan
 como `Authorization: Bearer <access_token>` contra `GET /identidad/contexto` y el resto
 de endpoints.
 
+### Gestión de cuenta avanzada
+
+Todos tenant-agnósticos (`DatosTokenDep`, no `ContextoIdentidadDep`), `Authorization:
+Bearer <jwt>`:
+
+- `GET /identidad/sesiones` / `POST /identidad/sesiones/{sesion_id}/cerrar` -- metadata
+  de `public.sesiones` (dispositivo, IP, `nivel_autenticacion`, timestamps). Cerrar una
+  sesión puntual **solo marca `cerrada_at`**: Supabase Auth no expone revocar el JWT de
+  un `sesion_id` arbitrario sin poseer su token (que este backend nunca guarda) -- solo
+  revocación GLOBAL (`POST /identidad/cerrar-todas-las-sesiones`, ya existente) invalida
+  de verdad. Ver el docstring de `dominio.puertos.RepositorioSesionesPuerto.cerrar_sesion`.
+- `GET /identidad/auditoria` -- historial de `auditoria_autenticacion`, paginado
+  (`limite` máx. 100, `pagina`).
+- `POST /identidad/cambiar-contrasena` -- distinto de `restablecer-contrasena` (ese es
+  sin sesión, vía correo): exige la contraseña ACTUAL (reautenticada contra GoTrue) y un
+  JWT emitido hace menos de 10 minutos.
+- `POST /identidad/cambiar-correo` -- exige JWT < 10 min. Usa `updateUser` nativo de
+  GoTrue; con `double_confirm_changes = true` el cambio queda pendiente hasta confirmar
+  por correo (responde `202`).
+- `POST /identidad/mfa/inscribir`, `.../verificar-inscripcion`, `.../desactivar`,
+  `GET /identidad/mfa/factores` -- proxy del soporte NATIVO de MFA TOTP de Supabase Auth
+  (`auth.mfa.*`, habilitado en `supabase/config.toml`). No reimplementa TOTP a mano
+  sobre `factores_autenticacion`/`retos_autenticacion` (`010_identidad_extendida.sql`,
+  que quedan MFA-ready pero sin uso) -- ver `dominio.puertos.AutenticadorMfaPuerto`.
+  `desactivar` también exige JWT < 10 min (extensión de este PR, ver su docstring).
+
 ## Tests
 
 `uv run pytest -q` desde `api/`. Los tests de `dominio/`/`aplicacion/` no requieren red

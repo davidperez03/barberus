@@ -14,6 +14,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from contextos.identidad.dominio.excepciones import (
+    ReautenticacionRequerida,
     SesionCerrada,
     SesionExpirada,
     SinRolAsignado,
@@ -29,6 +30,13 @@ _TIMEOUT_ROLES_DISPOSITIVO_COMPARTIDO = timedelta(minutes=15)
 _TIMEOUT_ROLES_NORMAL = timedelta(hours=8)
 
 _ROLES_DISPOSITIVO_COMPARTIDO = frozenset({Rol.PROFESIONAL, Rol.DUENO_SEDE})
+
+# Mismo umbral que el trigger SQL `exigir_reautenticacion_clientes`
+# (`009_identidad_autenticacion.sql`) para cambios sensibles de correo/teléfono de un
+# cliente -- se replica acá porque las operaciones sensibles de ESTE contexto
+# (cambiar-contrasena, cambiar-correo, eliminar-cuenta) actúan sobre `auth.users`/Auth
+# Admin API, que no tiene un trigger de Postgres equivalente que lo exija por sí solo.
+UMBRAL_REAUTENTICACION_RECIENTE = timedelta(minutes=10)
 
 
 def resolver_rol_activo(
@@ -100,3 +108,16 @@ def verificar_sesion_vigente(sesion: Sesion, ahora: datetime) -> None:
         raise SesionCerrada(f"La sesión {sesion.id} ya fue cerrada")
     if ahora >= sesion.expira_at:
         raise SesionExpirada(f"La sesión {sesion.id} expiró en {sesion.expira_at.isoformat()}")
+
+
+def verificar_reautenticacion_reciente(emitido_en: datetime, ahora: datetime) -> None:
+    """Exige que el JWT actual (`emitido_en`, claim `iat`) tenga menos de 10 minutos --
+    mismo criterio que `exigir_reautenticacion_clientes` en el esquema SQL. Recibe
+    `ahora` como parámetro (no usa `datetime.now()` internamente) por el mismo motivo
+    que `verificar_sesion_vigente`: el dominio sigue siendo puro y determinista en tests.
+    """
+    if ahora - emitido_en > UMBRAL_REAUTENTICACION_RECIENTE:
+        raise ReautenticacionRequerida(
+            "Esta operación requiere una sesión reciente (menos de 10 minutos desde el "
+            "último inicio de sesión). Vuelve a iniciar sesión e intenta de nuevo."
+        )

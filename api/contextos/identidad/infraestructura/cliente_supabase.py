@@ -17,7 +17,9 @@ from __future__ import annotations
 from functools import lru_cache
 
 from supabase import Client, create_client
+from supabase_auth.errors import AuthInvalidJwtError, AuthSessionMissingError
 
+from contextos.identidad.dominio.excepciones import TokenInvalido
 from nucleo.configuracion import obtener_configuracion
 
 
@@ -42,6 +44,33 @@ def obtener_cliente_supabase_auth() -> Client:
     """
     configuracion = obtener_configuracion()
     return create_client(configuracion.supabase_url, configuracion.supabase_publishable_key)
+
+
+def obtener_cliente_con_sesion_de_token(token_acceso: str) -> Client:
+    """Cliente efímero (ver `obtener_cliente_supabase_auth_efimero`) con la sesión del
+    propio usuario ya materializada a partir de su access token.
+
+    `set_session(token_acceso, "")`: el refresh token vacío es intencional en TODOS los
+    llamadores de esta función -- el access token de la request YA fue validado como no
+    expirado por `ValidadorJwtSupabase` antes de llegar acá, así que `set_session` toma la
+    rama que NO necesita refresh token (ver su docstring: solo lo usa si el access token
+    está vencido).
+
+    Único punto donde se mapean `AuthSessionMissingError`/`AuthInvalidJwtError` a
+    `TokenInvalido` para este patrón -- antes triplicado entre `cambiar_contrasena`,
+    `cambiar_correo` (`autenticador_supabase.py`) y el `_cliente_con_sesion` local de
+    `autenticador_mfa_supabase.py`.
+
+    Nota: `restablecer_contrasena` (flujo de recuperación) NO usa esta función -- ahí el
+    refresh token SÍ es real (el par access/refresh que el frontend obtuvo del enlace de
+    recuperación), un caso distinto que conserva su propio mapeo de error.
+    """
+    cliente = obtener_cliente_supabase_auth_efimero()
+    try:
+        cliente.auth.set_session(token_acceso, "")
+    except (AuthSessionMissingError, AuthInvalidJwtError) as error:
+        raise TokenInvalido("El token de acceso no es válido o expiró") from error
+    return cliente
 
 
 def obtener_cliente_supabase_como_usuario(token_jwt: str) -> Client:

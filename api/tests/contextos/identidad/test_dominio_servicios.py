@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from contextos.identidad.dominio.excepciones import (
+    ReautenticacionRequerida,
     SesionCerrada,
     SesionExpirada,
     SinRolAsignado,
@@ -25,6 +26,7 @@ from contextos.identidad.dominio.objetos_valor import (
 from contextos.identidad.dominio.servicios import (
     calcular_expiracion_sesion,
     resolver_rol_activo,
+    verificar_reautenticacion_reciente,
     verificar_sesion_vigente,
 )
 
@@ -131,6 +133,8 @@ def _sesion(*, expira_at: datetime, cerrada_at: datetime | None = None) -> Sesio
         id="sesion-1",
         usuario_id="usuario-1",
         tenant_id=TENANT_A,
+        dispositivo="Chrome en Windows",
+        ip="127.0.0.1",
         nivel_autenticacion=NivelAutenticacion.AAL1,
         iniciada_at=ahora,
         ultima_actividad_at=ahora,
@@ -159,3 +163,24 @@ class TestVerificarSesionVigente:
 
         with pytest.raises(SesionCerrada):
             verificar_sesion_vigente(sesion, ahora=ahora)
+
+
+class TestVerificarReautenticacionReciente:
+    def test_jwt_reciente_no_levanta(self) -> None:
+        emitido_en = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
+        ahora = emitido_en + timedelta(minutes=5)
+
+        verificar_reautenticacion_reciente(emitido_en, ahora=ahora)
+
+    def test_jwt_justo_en_el_umbral_no_levanta(self) -> None:
+        emitido_en = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
+        ahora = emitido_en + timedelta(minutes=10)
+
+        verificar_reautenticacion_reciente(emitido_en, ahora=ahora)
+
+    def test_jwt_viejo_levanta_reautenticacion_requerida(self) -> None:
+        emitido_en = datetime(2026, 1, 1, 0, 0, tzinfo=UTC)
+        ahora = emitido_en + timedelta(minutes=10, seconds=1)
+
+        with pytest.raises(ReautenticacionRequerida):
+            verificar_reautenticacion_reciente(emitido_en, ahora=ahora)

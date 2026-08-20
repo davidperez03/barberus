@@ -81,6 +81,8 @@ class Sesion:
     id: str
     usuario_id: str
     tenant_id: str | None
+    dispositivo: str | None
+    ip: str | None
     nivel_autenticacion: NivelAutenticacion
     iniciada_at: datetime
     ultima_actividad_at: datetime
@@ -146,6 +148,80 @@ class CambiosPerfil:
         """`True` si no se pidió cambiar ningún campo -- el caso de uso lo puede rechazar
         antes de golpear la infraestructura."""
         return self == CambiosPerfil()
+
+
+class EventoAutenticacion(str, Enum):
+    """Espejo del check constraint `auditoria_autenticacion.evento`
+    (`010_identidad_extendida.sql`)."""
+
+    LOGIN = "login"
+    LOGOUT = "logout"
+    LOGIN_FALLIDO = "login_fallido"
+    CONTRASENA_CAMBIADA = "contrasena_cambiada"
+    CONTRASENA_RECUPERADA = "contrasena_recuperada"
+    BLOQUEO_APLICADO = "bloqueo_aplicado"
+    BLOQUEO_REMOVIDO = "bloqueo_removido"
+    MFA_ACTIVADO = "mfa_activado"
+    MFA_DESACTIVADO = "mfa_desactivado"
+    CORREO_CAMBIADO = "correo_cambiado"
+
+
+@dataclass(frozen=True, slots=True)
+class EventoAuditoria:
+    """Espejo de una fila de `auditoria_autenticacion` -- historial de accesos/cambios
+    sensibles del usuario autenticado (`GET /identidad/auditoria`)."""
+
+    id: str
+    evento: EventoAutenticacion
+    tenant_id: str | None
+    ip: str | None
+    user_agent: str | None
+    metadata: dict
+    creado_at: datetime
+
+
+class TipoFactorMfa(str, Enum):
+    """Tipos de factor MFA que Supabase Auth (GoTrue) soporta hoy -- ver
+    `supabase/config.toml` `[auth.mfa.totp]`/`[auth.mfa.phone]`. Solo TOTP está
+    habilitado (`enroll_enabled`) en este proyecto; `PHONE` se deja modelado por si se
+    habilita a futuro, pero ningún puerto de este contexto lo emite todavía."""
+
+    TOTP = "totp"
+    PHONE = "phone"
+
+
+class EstadoFactorMfa(str, Enum):
+    """Espejo del `status` que devuelve GoTrue para un factor MFA."""
+
+    NO_VERIFICADO = "unverified"
+    VERIFICADO = "verified"
+
+
+@dataclass(frozen=True, slots=True)
+class FactorMfa:
+    """Un factor MFA tal como lo reporta GoTrue (`auth.mfa.list_factors`) -- no una fila
+    de `factores_autenticacion` (esa tabla queda MFA-ready pero sin uso, ver
+    `dominio.puertos.AutenticadorMfaPuerto`)."""
+
+    id: str
+    tipo: TipoFactorMfa
+    estado: EstadoFactorMfa
+    nombre_amistoso: str | None
+    creado_at: datetime
+    actualizado_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class InscripcionMfaTotp:
+    """Resultado de iniciar la inscripción de un factor TOTP (`auth.mfa.enroll`): secreto
+    y QR para mostrar al usuario en su app authenticator. El factor queda `unverified`
+    hasta que `VerificarInscripcionMfa` confirme un código válido."""
+
+    factor_id: str
+    secreto: str
+    codigo_qr: str
+    uri: str
+    nombre_amistoso: str | None
 
 
 @dataclass(frozen=True, slots=True)
