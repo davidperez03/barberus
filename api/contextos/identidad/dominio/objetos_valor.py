@@ -101,8 +101,8 @@ class DatosSesionAuth:
     proveedor, tipo de token, etc.) se descarta en el adaptador.
     """
 
-    access_token: str
-    refresh_token: str
+    token_acceso: str
+    token_actualizacion: str
     usuario_id: str
     expira_at: datetime
 

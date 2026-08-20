@@ -58,16 +58,16 @@ class CredencialesPeticion(BaseModel):
 class DatosSesionAuthRespuesta(BaseModel):
     """Respuesta de `POST /identidad/registro` y `POST /identidad/iniciar-sesion`."""
 
-    access_token: str
-    refresh_token: str
+    token_acceso: str
+    token_actualizacion: str
     usuario_id: str
     expira_at: datetime
 
     @classmethod
     def desde_dominio(cls, datos: DatosSesionAuth) -> DatosSesionAuthRespuesta:
         return cls(
-            access_token=datos.access_token,
-            refresh_token=datos.refresh_token,
+            token_acceso=datos.token_acceso,
+            token_actualizacion=datos.token_actualizacion,
             usuario_id=datos.usuario_id,
             expira_at=datos.expira_at,
         )

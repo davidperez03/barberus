@@ -71,8 +71,8 @@ def test_registrar_devuelve_datos_de_sesion_cuando_gotrue_responde_con_sesion() 
     datos = autenticador.registrar(correo=CORREO, contrasena=CONTRASENA)
 
     assert datos.usuario_id == USUARIO_ID
-    assert datos.access_token == "access-token-real"
-    assert datos.refresh_token == "refresh-token-real"
+    assert datos.token_acceso == "access-token-real"
+    assert datos.token_actualizacion == "refresh-token-real"
     assert datos.expira_at > datetime.now(UTC)
 
 

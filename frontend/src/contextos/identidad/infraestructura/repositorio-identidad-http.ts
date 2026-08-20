@@ -18,8 +18,8 @@ import {
 const URL_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 interface DatosSesionAuthCruda {
-  access_token: string;
-  refresh_token: string;
+  token_acceso: string;
+  token_actualizacion: string;
   usuario_id: string;
   expira_at: string;
 }
@@ -39,8 +39,8 @@ interface ContextoIdentidadCrudo {
 
 function mapearSesion(cruda: DatosSesionAuthCruda): DatosSesionAuth {
   return {
-    accessToken: cruda.access_token,
-    refreshToken: cruda.refresh_token,
+    accessToken: cruda.token_acceso,
+    refreshToken: cruda.token_actualizacion,
     usuarioId: cruda.usuario_id,
     expiraAt: cruda.expira_at,
   };

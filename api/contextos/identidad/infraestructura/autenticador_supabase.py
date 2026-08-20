@@ -117,8 +117,8 @@ class AutenticadorSupabase:
             else datetime.now(UTC)
         )
         return DatosSesionAuth(
-            access_token=sesion.access_token,
-            refresh_token=sesion.refresh_token,
+            token_acceso=sesion.access_token,
+            token_actualizacion=sesion.refresh_token,
             usuario_id=respuesta.user.id,
             expira_at=expira_at,
         )

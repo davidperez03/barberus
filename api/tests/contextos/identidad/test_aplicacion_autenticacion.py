@@ -51,8 +51,8 @@ class AutenticadorFake:
 
 def _datos_sesion(correo: str) -> DatosSesionAuth:
     return DatosSesionAuth(
-        access_token="access-token-fake",
-        refresh_token="refresh-token-fake",
+        token_acceso="access-token-fake",
+        token_actualizacion="refresh-token-fake",
         usuario_id=f"usuario-de-{correo}",
         expira_at=datetime.now(UTC),
     )
@@ -64,7 +64,7 @@ def test_registrar_usuario_devuelve_datos_de_sesion() -> None:
     datos = caso_de_uso.ejecutar(correo=CORREO, contrasena=CONTRASENA)
 
     assert datos.usuario_id == f"usuario-de-{CORREO}"
-    assert datos.access_token
+    assert datos.token_acceso
 
 
 def test_registrar_usuario_con_correo_duplicado_propaga_excepcion_de_dominio() -> None:
