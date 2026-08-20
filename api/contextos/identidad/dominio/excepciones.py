@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from nucleo.excepciones import AccesoNoAutorizado, ExcepcionBarberus
+from nucleo.excepciones import AccesoNoAutorizado, ExcepcionBarberus, RecursoNoEncontrado
 
 
 class TokenInvalido(ExcepcionBarberus):
@@ -85,4 +85,21 @@ class RegistroSinSesionInmediata(ExcepcionBarberus):
 
     No es un error del llamador: es la respuesta esperada cuando no podemos (o no
     queremos) confirmar una sesión en el acto.
+    """
+
+
+class PerfilNoEncontrado(RecursoNoEncontrado):
+    """No existe (o RLS no deja ver) la fila de `perfiles_usuario` del usuario autenticado.
+
+    No debería ocurrir en operación normal (`crear_perfil_usuario` la crea al registrarse
+    -- ver `010_identidad_extendida.sql`), pero el puerto no lo asume.
+    """
+
+
+class EdicionPerfilRechazada(AccesoNoAutorizado):
+    """Postgres (RLS o `restringir_columnas_perfil_usuario`) rechazó la edición.
+
+    El request ya venía validado por Pydantic a solo los campos permitidos por diseño --
+    esto solo debería dispararse ante una condición de carrera o un cambio de esquema no
+    reflejado todavía en `interfaces/esquemas.py`, nunca por un intento normal del cliente.
     """

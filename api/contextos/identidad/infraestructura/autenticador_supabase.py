@@ -15,15 +15,19 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from supabase import Client
-from supabase_auth.errors import AuthApiError
+from supabase_auth.errors import AuthApiError, AuthInvalidJwtError, AuthSessionMissingError
 from supabase_auth.types import AuthResponse
 
 from contextos.identidad.dominio.excepciones import (
     CredencialesInvalidas,
     RegistroSinSesionInmediata,
     SolicitudAutenticacionInvalida,
+    TokenInvalido,
 )
 from contextos.identidad.dominio.objetos_valor import DatosSesionAuth
+from contextos.identidad.infraestructura.cliente_supabase import (
+    obtener_cliente_supabase_auth_efimero,
+)
 
 # Códigos de error de GoTrue (`supabase_auth.errors.ErrorCode`) que indican "correo ya
 # tiene cuenta" al intentar registrar -- ambos existen según la versión/configuración del
@@ -100,6 +104,41 @@ class AutenticadorSupabase:
             raise SolicitudAutenticacionInvalida(str(error)) from error
         return self._mapear(respuesta)
 
+    def enviar_recuperacion_contrasena(self, correo: str) -> None:
+        try:
+            self.cliente.auth.reset_password_for_email(correo)
+        except AuthApiError:
+            # GoTrue ya responde 200 en `/recover` sin distinguir "correo con cuenta" de
+            # "correo sin cuenta" (anti-enumeración propia de GoTrue) -- cualquier error
+            # que SÍ levante acá (p.ej. `over_email_send_rate_limit`) se traga: nunca debe
+            # ser observable desde la respuesta de este puerto, mismo criterio que
+            # `registrar()`. El router responde siempre el mismo mensaje genérico.
+            pass
+
+    def restablecer_contrasena(
+        self, token_acceso: str, token_actualizacion: str, nueva_contrasena: str
+    ) -> None:
+        # Cliente NUEVO (no `self.cliente`, que es el compartido/cacheado de
+        # `registrar`/`iniciar_sesion`): `set_session()`+`update_user()` dependen del
+        # storage de sesión EN MEMORIA del cliente GoTrue -- reusar el compartido
+        # arriesgaría que dos requests concurrentes se pisen esa sesión y `update_user`
+        # termine aplicando la nueva contraseña a otro usuario. Ver
+        # `cliente_supabase.obtener_cliente_supabase_auth_efimero`.
+        cliente_efimero = obtener_cliente_supabase_auth_efimero()
+        try:
+            # `update_user` de supabase-py exige una sesión ya "activa" en el cliente
+            # (`get_session()` interno) -- `set_session` la materializa a partir del par
+            # access/refresh token de recuperación que el frontend obtuvo al abrir el
+            # enlace del correo (flujo estándar de GoTrue: la sesión de recovery YA es un
+            # access_token válido, solo de corta vida / propósito limitado a esta
+            # operación).
+            cliente_efimero.auth.set_session(token_acceso, token_actualizacion)
+            cliente_efimero.auth.update_user({"password": nueva_contrasena})
+        except AuthApiError as error:
+            raise SolicitudAutenticacionInvalida(str(error)) from error
+        except (AuthSessionMissingError, AuthInvalidJwtError) as error:
+            raise TokenInvalido("La sesión de recuperación no es válida o expiró") from error
+
     @staticmethod
     def _mapear(respuesta: AuthResponse) -> DatosSesionAuth:
         sesion = respuesta.session
@@ -117,8 +156,8 @@ class AutenticadorSupabase:
             else datetime.now(UTC)
         )
         return DatosSesionAuth(
-            access_token=sesion.access_token,
-            refresh_token=sesion.refresh_token,
+            token_acceso=sesion.access_token,
+            token_actualizacion=sesion.refresh_token,
             usuario_id=respuesta.user.id,
             expira_at=expira_at,
         )

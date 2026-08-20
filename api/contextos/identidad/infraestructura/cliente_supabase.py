@@ -42,3 +42,45 @@ def obtener_cliente_supabase_auth() -> Client:
     """
     configuracion = obtener_configuracion()
     return create_client(configuracion.supabase_url, configuracion.supabase_publishable_key)
+
+
+def obtener_cliente_supabase_como_usuario(token_jwt: str) -> Client:
+    """Cliente nuevo (clave `publishable`, la misma de `obtener_cliente_supabase_auth`)
+    cuyas queries a PostgREST corren con el JWT del usuario -- no con la `secret` key.
+
+    Uso: `RepositorioPerfilSupabase` (lectura/escritura de `perfiles_usuario`), donde la
+    ESCRITURA debe respetar la RLS real y dejar que el trigger
+    `restringir_columnas_perfil_usuario` sea la única fuente de verdad de qué columnas
+    puede tocar el propio usuario -- si se usara la `secret` key, PostgREST correría como
+    `service_role` y ese trigger la reconoce como bypass explícito (ver
+    `011_perfil_cuenta_gestion.sql`), exactamente lo que NO queremos acá.
+
+    Deliberadamente SIN `@lru_cache`, a diferencia de los otros dos clientes de este
+    módulo: el JWT cambia en cada request, cachear por valor de JWT filtraría memoria sin
+    límite (uno por token emitido) y cachear un único cliente compartido mezclaría el JWT
+    de un usuario con las requests de otro.
+    """
+    configuracion = obtener_configuracion()
+    cliente = create_client(configuracion.supabase_url, configuracion.supabase_publishable_key)
+    cliente.postgrest.auth(token_jwt)
+    return cliente
+
+
+def obtener_cliente_supabase_auth_efimero() -> Client:
+    """Cliente nuevo (clave `publishable`) para operaciones de `AutenticadorPuerto` que
+    mutan el estado de sesión INTERNO del cliente GoTrue (`auth.set_session`).
+
+    `GoTrueClient` guarda la sesión "activa" en un storage en memoria propio de la
+    instancia (`_save_session`/`get_session`) -- si se reutilizara el cliente cacheado de
+    `obtener_cliente_supabase_auth` (compartido por TODO el proceso), dos requests
+    concurrentes de `restablecer_contrasena` (o una de esas junto con un `registro`/
+    `iniciar_sesion` concurrente, que también tocan ese mismo storage como side-effect)
+    podrían pisarse la sesión en memoria entre el `set_session()` y el `update_user()`
+    posterior -- `update_user()` lee la sesión de ESE storage compartido para decidir a
+    qué usuario aplica el cambio de contraseña. En el peor caso, eso aplicaría la nueva
+    contraseña a la cuenta de OTRO usuario. Un cliente nuevo por llamada, con su propio
+    storage aislado, elimina esa condición de carrera de raíz -- mismo criterio que
+    `obtener_cliente_supabase_como_usuario`, deliberadamente SIN `@lru_cache`.
+    """
+    configuracion = obtener_configuracion()
+    return create_client(configuracion.supabase_url, configuracion.supabase_publishable_key)
