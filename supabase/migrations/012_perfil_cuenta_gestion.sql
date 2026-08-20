@@ -130,4 +130,4 @@ end;
 $$;
 
 comment on function public.restringir_columnas_perfil_usuario() is
-  'Whitelist REAL (deny-by-default via diff de to_jsonb, no un denylist de nombres) de columnas por UPDATE de perfiles_usuario: eliminado_at y bloqueado_hasta solo administrador_plataforma; fila propia permite metadata_usuario + nombre_completo/avatar_url/terminos_aceptados_at/terminos_version/onboarding_completado_at (agregados en 011_perfil_cuenta_gestion.sql); fila ajena (staff/dueno_sede) solo correo_verificado/telefono_verificado. Excepcion explicita via barberus.contexto para la sincronizacion interna desde auth.users.';
+  'Whitelist REAL (deny-by-default via diff de to_jsonb, no un denylist de nombres) de columnas por UPDATE de perfiles_usuario: eliminado_at y bloqueado_hasta solo administrador_plataforma; fila propia permite metadata_usuario + nombre_completo/avatar_url/terminos_aceptados_at/terminos_version/onboarding_completado_at (agregados en 012_perfil_cuenta_gestion.sql); fila ajena (staff/dueno_sede) solo correo_verificado/telefono_verificado. Excepcion explicita via barberus.contexto para la sincronizacion interna desde auth.users.';
