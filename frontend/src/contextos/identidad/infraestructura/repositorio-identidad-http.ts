@@ -36,8 +36,8 @@ type ContextoIdentidadCrudo = SchemaContextoIdentidadRespuesta;
 
 function mapearSesion(cruda: DatosSesionAuthCruda): DatosSesionAuth {
   return {
-    accessToken: cruda.token_acceso,
-    refreshToken: cruda.token_actualizacion,
+    tokenAcceso: cruda.token_acceso,
+    tokenActualizacion: cruda.token_actualizacion,
     usuarioId: cruda.usuario_id,
     expiraAt: cruda.expira_at,
   };

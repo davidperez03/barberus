@@ -51,7 +51,7 @@ export class AlmacenSesionCookie implements AlmacenSesion {
       Math.floor((expira.getTime() - Date.now()) / 1000),
     );
     const valor = encodeURIComponent(
-      JSON.stringify({ accessToken: sesion.accessToken, usuarioId: sesion.usuarioId }),
+      JSON.stringify({ tokenAcceso: sesion.tokenAcceso, usuarioId: sesion.usuarioId }),
     );
     const seguro = window.location.protocol === "https:" ? "; Secure" : "";
     document.cookie = `${NOMBRE_COOKIE}=${valor}; Path=/; Max-Age=${maxAgeSegundos}; SameSite=Lax${seguro}`;
@@ -62,7 +62,7 @@ export class AlmacenSesionCookie implements AlmacenSesion {
     const crudo = leerCookie(NOMBRE_COOKIE);
     if (!crudo) return null;
     try {
-      return (JSON.parse(crudo) as { accessToken: string }).accessToken ?? null;
+      return (JSON.parse(crudo) as { tokenAcceso: string }).tokenAcceso ?? null;
     } catch {
       return null;
     }

@@ -24,8 +24,8 @@ export interface Credenciales {
  * inmediata (login siempre; registro solo si el proyecto no exige confirmación de correo).
  */
 export interface DatosSesionAuth {
-  accessToken: string;
-  refreshToken: string;
+  tokenAcceso: string;
+  tokenActualizacion: string;
   usuarioId: string;
   expiraAt: string;
 }
