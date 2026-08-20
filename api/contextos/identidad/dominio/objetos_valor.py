@@ -108,6 +108,47 @@ class DatosSesionAuth:
 
 
 @dataclass(frozen=True, slots=True)
+class PerfilCuenta:
+    """Espejo de los campos de `perfiles_usuario` que el propio usuario gestiona sobre su
+    cuenta (`011_perfil_cuenta_gestion.sql`) -- nombre/avatar transversales a todos los
+    roles, consentimiento de términos y onboarding. No incluye `correo_verificado`,
+    `telefono_verificado`, `eliminado_at`, `bloqueado_hasta` -- esos son estado que el
+    propio usuario NUNCA edita (ver `restringir_columnas_perfil_usuario`) y no forman
+    parte de "gestión de cuenta" en el sentido de este caso de uso.
+    """
+
+    usuario_id: str
+    nombre_completo: str | None
+    avatar_url: str | None
+    terminos_aceptados_at: datetime | None
+    terminos_version: str | None
+    onboarding_completado_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class CambiosPerfil:
+    """Edición parcial de `PerfilCuenta` -- solo los campos que el llamador quiere tocar.
+
+    Un campo en `None` significa "no lo toques" (el PATCH es parcial), NUNCA "bórralo a
+    NULL" -- este contexto no tiene hoy un caso de uso real de "quitar mi nombre/avatar ya
+    puesto", así que se prefiere esta semántica simple sobre un sentinel
+    provisto/no-provisto que nadie necesita todavía.
+    """
+
+    nombre_completo: str | None = None
+    avatar_url: str | None = None
+    terminos_aceptados_at: datetime | None = None
+    terminos_version: str | None = None
+    onboarding_completado_at: datetime | None = None
+
+    @property
+    def vacio(self) -> bool:
+        """`True` si no se pidió cambiar ningún campo -- el caso de uso lo puede rechazar
+        antes de golpear la infraestructura."""
+        return self == CambiosPerfil()
+
+
+@dataclass(frozen=True, slots=True)
 class ContextoIdentidad:
     """Resultado final del caso de uso `ResolverContextoIdentidad`.
 

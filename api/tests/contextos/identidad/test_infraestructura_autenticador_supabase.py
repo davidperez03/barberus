@@ -13,13 +13,15 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
-from supabase_auth.errors import AuthApiError
+from supabase_auth.errors import AuthApiError, AuthInvalidJwtError, AuthSessionMissingError
 from supabase_auth.types import AuthResponse, Session, User
 
+import contextos.identidad.infraestructura.autenticador_supabase as autenticador_supabase_modulo
 from contextos.identidad.dominio.excepciones import (
     CredencialesInvalidas,
     RegistroSinSesionInmediata,
     SolicitudAutenticacionInvalida,
+    TokenInvalido,
 )
 from contextos.identidad.infraestructura.autenticador_supabase import AutenticadorSupabase
 
@@ -256,3 +258,125 @@ def test_iniciar_sesion_con_error_no_reconocido_levanta_solicitud_invalida() -> 
 
     with pytest.raises(SolicitudAutenticacionInvalida, match="not allowed"):
         autenticador.iniciar_sesion(correo=CORREO, contrasena=CONTRASENA)
+
+
+def test_enviar_recuperacion_contrasena_nunca_levanta_aunque_gotrue_rechace() -> None:
+    """Anti-enumeración: incluso si GoTrue levanta (rate-limit, etc.), el adaptador se lo
+    traga -- el llamador nunca puede distinguir "correo con cuenta" de "correo sin
+    cuenta" ni de "GoTrue rechazó la solicitud" a partir de este método."""
+    error = AuthApiError(
+        "For security purposes, you can only request this after 51 seconds.",
+        status=429,
+        code="over_email_send_rate_limit",
+    )
+    cliente = _cliente_con_auth(
+        reset_password_for_email=lambda correo, **_: (_ for _ in ()).throw(error)
+    )
+    autenticador = AutenticadorSupabase(cliente=cliente)
+
+    autenticador.enviar_recuperacion_contrasena(correo=CORREO)
+
+
+def test_enviar_recuperacion_contrasena_llama_a_gotrue_con_el_correo() -> None:
+    cliente = _cliente_con_auth(reset_password_for_email=lambda correo, **_: None)
+    autenticador = AutenticadorSupabase(cliente=cliente)
+
+    autenticador.enviar_recuperacion_contrasena(correo=CORREO)
+
+    cliente.auth.reset_password_for_email.assert_called_once_with(CORREO)
+
+
+def _mockear_cliente_efimero(monkeypatch: pytest.MonkeyPatch, cliente_efimero) -> None:
+    """`restablecer_contrasena` deliberadamente NO usa `self.cliente` (el compartido/
+    cacheado por `registrar`/`iniciar_sesion`) -- construye un cliente nuevo por llamada
+    vía `obtener_cliente_supabase_auth_efimero` para evitar la condición de carrera del
+    storage de sesión en memoria de `GoTrueClient` (ver
+    `cliente_supabase.obtener_cliente_supabase_auth_efimero`). Estos tests mockean esa
+    factory a nivel de módulo, no `self.cliente`.
+    """
+    monkeypatch.setattr(
+        autenticador_supabase_modulo, "obtener_cliente_supabase_auth_efimero", lambda: cliente_efimero
+    )
+
+
+def test_restablecer_contrasena_con_sesion_de_recovery_valida_llama_update_user(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cliente_efimero = _cliente_con_auth(set_session=lambda *_: None, update_user=lambda *_: None)
+    _mockear_cliente_efimero(monkeypatch, cliente_efimero)
+    autenticador = AutenticadorSupabase(cliente=_cliente_con_auth())
+
+    autenticador.restablecer_contrasena(
+        token_acceso="acc", token_actualizacion="ref", nueva_contrasena="clave-nueva-larga"
+    )
+
+    cliente_efimero.auth.set_session.assert_called_once_with("acc", "ref")
+    cliente_efimero.auth.update_user.assert_called_once_with({"password": "clave-nueva-larga"})
+
+
+def test_restablecer_contrasena_no_reutiliza_el_cliente_compartido(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verificación explícita de la corrección de la condición de carrera: el cliente
+    inyectado por constructor (`self.cliente`, compartido entre requests) NUNCA se toca
+    en este método."""
+    cliente_compartido = _cliente_con_auth()
+    cliente_efimero = _cliente_con_auth(set_session=lambda *_: None, update_user=lambda *_: None)
+    _mockear_cliente_efimero(monkeypatch, cliente_efimero)
+    autenticador = AutenticadorSupabase(cliente=cliente_compartido)
+
+    autenticador.restablecer_contrasena(
+        token_acceso="acc", token_actualizacion="ref", nueva_contrasena="clave-nueva-larga"
+    )
+
+    cliente_compartido.auth.set_session.assert_not_called()
+    cliente_compartido.auth.update_user.assert_not_called()
+
+
+def test_restablecer_contrasena_con_sesion_invalida_levanta_token_invalido(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cliente_efimero = _cliente_con_auth(
+        set_session=lambda *_: (_ for _ in ()).throw(AuthSessionMissingError())
+    )
+    _mockear_cliente_efimero(monkeypatch, cliente_efimero)
+    autenticador = AutenticadorSupabase(cliente=_cliente_con_auth())
+
+    with pytest.raises(TokenInvalido):
+        autenticador.restablecer_contrasena(
+            token_acceso="acc", token_actualizacion="ref", nueva_contrasena="clave-nueva-larga"
+        )
+
+
+def test_restablecer_contrasena_con_jwt_malformado_levanta_token_invalido(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cliente_efimero = _cliente_con_auth(
+        set_session=lambda *_: (_ for _ in ()).throw(AuthInvalidJwtError("Invalid JWT structure"))
+    )
+    _mockear_cliente_efimero(monkeypatch, cliente_efimero)
+    autenticador = AutenticadorSupabase(cliente=_cliente_con_auth())
+
+    with pytest.raises(TokenInvalido):
+        autenticador.restablecer_contrasena(
+            token_acceso="no-es-un-jwt",
+            token_actualizacion="ref",
+            nueva_contrasena="clave-nueva-larga",
+        )
+
+
+def test_restablecer_contrasena_con_politica_de_password_rechazada_levanta_solicitud_invalida(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    error = AuthApiError("Password should be at least 8 characters", status=422, code="weak_password")
+    cliente_efimero = _cliente_con_auth(
+        set_session=lambda *_: None,
+        update_user=lambda *_: (_ for _ in ()).throw(error),
+    )
+    _mockear_cliente_efimero(monkeypatch, cliente_efimero)
+    autenticador = AutenticadorSupabase(cliente=_cliente_con_auth())
+
+    with pytest.raises(SolicitudAutenticacionInvalida):
+        autenticador.restablecer_contrasena(
+            token_acceso="acc", token_actualizacion="ref", nueva_contrasena="short12"
+        )
