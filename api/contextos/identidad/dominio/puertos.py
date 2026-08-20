@@ -16,6 +16,9 @@ from contextos.identidad.dominio.objetos_valor import (
     CambiosPerfil,
     DatosSesionAuth,
     DatosToken,
+    EventoAuditoria,
+    FactorMfa,
+    InscripcionMfaTotp,
     NivelAutenticacion,
     PerfilCuenta,
     Sesion,
@@ -53,6 +56,35 @@ class RepositorioSesionesPuerto(Protocol):
 
     def obtener_sesion(self, usuario_id: str, sesion_id: str) -> Sesion | None:
         """`None` si no existe o no pertenece a `usuario_id`."""
+        ...
+
+    def listar_sesiones(self, usuario_id: str) -> list[Sesion]:
+        """Todas las sesiones (activas y cerradas) del usuario, más recientes primero --
+        `GET /identidad/sesiones`."""
+        ...
+
+    def cerrar_sesion(self, usuario_id: str, sesion_id: str) -> Sesion:
+        """Marca `cerrada_at` de una sesión puntual (no todas -- ver
+        `GestorCuentaPuerto.cerrar_todas_las_sesiones` para eso).
+
+        LIMITACIÓN EXPLÍCITA: esto solo actualiza la metadata de aplicación en
+        `sesiones` -- NO revoca el JWT/refresh token real de ESE dispositivo. La Auth
+        Admin API de Supabase (`admin.sign_out`) solo expone revocación GLOBAL
+        (`scope="global"`, todas las sesiones del usuario) o de la sesión ACTUAL del
+        propio caller (`scope="local"`/`"others"`, que opera sobre el JWT de quien hace
+        la llamada, identificado por un `session_id` embebido en ESE JWT) -- no existe
+        una operación de Admin API que reciba un `sesion_id` arbitrario (como el que
+        vive en nuestra tabla `sesiones`) y revoque ESA sesión específica sin poseer su
+        JWT, que este backend nunca almacena (correctamente: guardar tokens ajenos sería
+        un riesgo de seguridad mayor que esta limitación). En la práctica: cerrar una
+        sesión puntual aquí es una acción de UX/auditoría ("ya no la veo en mi lista",
+        útil si el dispositivo se perdió y se quiere dejar de confiar en él a nivel de
+        producto) -- el JWT de ese dispositivo sigue siendo válido por firma hasta que
+        expira naturalmente (`jwt_expiry`, hoy 1h) o hasta `cerrar_todas_las_sesiones`.
+
+        Levanta `dominio.excepciones.SesionNoEncontrada` si no existe o no pertenece a
+        `usuario_id`.
+        """
         ...
 
     def iniciar_sesion(
@@ -134,6 +166,107 @@ class AutenticadorPuerto(Protocol):
         válida/expiró, `dominio.excepciones.SolicitudAutenticacionInvalida` para cualquier
         otro rechazo de GoTrue (p.ej. política de contraseña).
         """
+        ...
+
+    def verificar_contrasena(self, correo: str, contrasena: str) -> None:
+        """Prueba que `contrasena` es la contraseña ACTUAL de la cuenta de `correo`,
+        reautenticando contra GoTrue (`sign_in_with_password`) y descartando la sesión
+        resultante -- nunca confía en "el JWT de la request es válido" como prueba de
+        que el llamador conoce la contraseña actual (eso solo prueba que inició sesión
+        en algún momento dentro de la ventana de reautenticación reciente).
+
+        Usado por `aplicacion.cambiar_contrasena.CambiarContrasena` antes de aplicar la
+        nueva contraseña. Levanta `dominio.excepciones.CredencialesActualesIncorrectas`
+        si no coincide.
+        """
+        ...
+
+    def cambiar_contrasena(self, token_acceso: str, nueva_contrasena: str) -> None:
+        """Fija una nueva contraseña sobre la sesión ACTIVA (no de recuperación) del
+        propio usuario -- llama `updateUser({"password": ...})` de GoTrue con el JWT de
+        la request ya validado. Distinto de `restablecer_contrasena`: ese es el flujo
+        SIN sesión normal (enlace de correo); este SÍ requiere estar logueado, y el
+        caso de uso ya validó `verificar_contrasena` antes de llegar acá.
+
+        Levanta `dominio.excepciones.TokenInvalido` si el token no es utilizable,
+        `dominio.excepciones.SolicitudAutenticacionInvalida` para cualquier otro rechazo
+        de GoTrue (p.ej. política de contraseña).
+        """
+        ...
+
+    def cambiar_correo(self, token_acceso: str, nuevo_correo: str) -> None:
+        """Inicia el cambio de correo vía GoTrue nativo (`updateUser({"email": ...})`).
+
+        Con `double_confirm_changes = true` (`supabase/config.toml`), GoTrue envía un
+        correo de confirmación a AMBAS direcciones (la actual y la nueva) y el cambio
+        solo se aplica cuando ambas confirman -- este puerto solo INICIA ese flujo, no
+        lo completa.
+
+        Levanta `dominio.excepciones.CorreoNoDisponible` si GoTrue rechaza el correo por
+        pertenecer ya a otra cuenta (ver nota de anti-enumeración en el adaptador
+        concreto -- esta es una fuga parcial aceptada del flujo nativo, no del todo
+        evitable sin dejar de usarlo), `dominio.excepciones.TokenInvalido` si el token no
+        es utilizable, `dominio.excepciones.SolicitudAutenticacionInvalida` para
+        cualquier otro rechazo.
+        """
+        ...
+
+
+class RepositorioAuditoriaPuerto(Protocol):
+    """Lee `auditoria_autenticacion` -- historial de accesos/cambios sensibles. Solo
+    lectura: la escritura de eventos de auditoría es responsabilidad de cada caso de uso
+    que los genera (login, cambio de contraseña, etc.), no de este puerto -- fuera del
+    alcance de este PR (ver docstring de `interfaces.router.listar_auditoria`).
+    """
+
+    def listar_eventos(self, usuario_id: str, limite: int, offset: int) -> list[EventoAuditoria]:
+        """Eventos del propio usuario, más recientes primero. `limite`/`offset` ya
+        validados por `interfaces/` (tope razonable, nunca "toda la tabla")."""
+        ...
+
+
+class AutenticadorMfaPuerto(Protocol):
+    """Proxy del soporte NATIVO de MFA TOTP de Supabase Auth (`auth.mfa.*` de GoTrue,
+    habilitado en `supabase/config.toml` `[auth.mfa.totp]`).
+
+    DECISIÓN DE ARQUITECTURA: `factores_autenticacion`/`retos_autenticacion`
+    (`010_identidad_extendida.sql`) quedan "MFA-ready" en el esquema pero SIN uso -- este
+    contexto no reimplementa generación/validación de secretos TOTP a mano sobre esas
+    tablas. GoTrue ya lo resuelve (genera el secreto, produce el QR/URI
+    `otpauth://`, valida el código TOTP contra una ventana de tiempo, y eleva la sesión a
+    `aal2` tras la primera verificación exitosa) -- mismo criterio que el resto del
+    proyecto: nunca reinventar lo que Supabase Auth ya da (identity linking, recuperación
+    de contraseña). Si en el futuro se necesitara un factor que GoTrue no soporte
+    (WebAuthn, por ejemplo, si no se habilita nativamente), esas tablas siguen ahí para
+    ese caso -- no para TOTP, que este puerto ya cubre.
+
+    Implementación concreta: `infraestructura.autenticador_mfa_supabase.AutenticadorMfaSupabase`.
+    """
+
+    def inscribir_totp(self, token_acceso: str, nombre_amistoso: str | None) -> InscripcionMfaTotp:
+        """Inicia la inscripción de un factor TOTP nuevo (`auth.mfa.enroll`) -- el factor
+        queda `unverified` hasta `verificar_inscripcion`."""
+        ...
+
+    def verificar_inscripcion(self, token_acceso: str, factor_id: str, codigo: str) -> None:
+        """Confirma el código generado por la app authenticator del usuario contra el
+        factor recién inscrito (`auth.mfa.challenge_and_verify`) -- lo activa
+        (`verified`) y eleva la sesión actual a `aal2`.
+
+        Levanta `dominio.excepciones.CodigoMfaInvalido` si el código no corresponde,
+        `dominio.excepciones.FactorMfaNoEncontrado` si `factor_id` no existe/no
+        pertenece al usuario.
+        """
+        ...
+
+    def desactivar(self, token_acceso: str, factor_id: str) -> None:
+        """Elimina un factor MFA (`auth.mfa.unenroll`). Levanta
+        `dominio.excepciones.FactorMfaNoEncontrado` si `factor_id` no existe/no
+        pertenece al usuario."""
+        ...
+
+    def listar_factores(self, token_acceso: str) -> list[FactorMfa]:
+        """Factores MFA (verificados y no verificados) del usuario autenticado."""
         ...
 
 

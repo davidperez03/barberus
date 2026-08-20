@@ -56,6 +56,12 @@ class RepositorioSesionesFake:
     def iniciar_sesion(self, usuario_id, tenant_id, nivel_autenticacion, expira_at, dispositivo, ip):
         raise NotImplementedError("no usado en estos tests")
 
+    def listar_sesiones(self, usuario_id):
+        raise NotImplementedError("no usado en estos tests")
+
+    def cerrar_sesion(self, usuario_id, sesion_id):
+        raise NotImplementedError("no usado en estos tests")
+
 
 def _datos_token() -> DatosToken:
     return DatosToken(
@@ -138,6 +144,8 @@ def test_incluye_sesion_vigente_cuando_se_pide_sesion_id() -> None:
         id="sesion-1",
         usuario_id=USUARIO_ID,
         tenant_id=TENANT_A,
+        dispositivo="Chrome en Windows",
+        ip="127.0.0.1",
         nivel_autenticacion=NivelAutenticacion.AAL1,
         iniciada_at=ahora,
         ultima_actividad_at=ahora,
